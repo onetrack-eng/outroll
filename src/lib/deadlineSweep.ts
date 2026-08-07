@@ -82,12 +82,15 @@ export async function runDeadlineSweep() {
         continue;
       }
       if (!isPast(hold.payoutReleaseAt!)) continue; // safety re-check
-      await transferToCurator({
+      const transfer = await transferToCurator({
         amountCents: hold.priceCents,
         destinationAccountId: hold.curator.stripeAccountId,
         holdId: hold.id,
       });
-      await prisma.hold.update({ where: { id: hold.id }, data: { status: 'PAID', paidAt: now } });
+      await prisma.hold.update({
+        where: { id: hold.id },
+        data: { status: 'PAID', paidAt: now, stripeTransferId: transfer.id },
+      });
       await sendCuratorPayoutEmail(hold.curator.email, formatCents(hold.priceCents));
       payoutsReleased += 1;
     } catch (err) {

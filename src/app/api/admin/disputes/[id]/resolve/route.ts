@@ -41,12 +41,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         { status: 409 }
       );
     }
-    await transferToCurator({
+    const transfer = await transferToCurator({
       amountCents: hold.priceCents,
       destinationAccountId: hold.curator.stripeAccountId,
       holdId: hold.id,
     });
-    await prisma.hold.update({ where: { id: hold.id }, data: { status: 'PAID', paidAt: now } });
+    await prisma.hold.update({
+      where: { id: hold.id },
+      data: { status: 'PAID', paidAt: now, stripeTransferId: transfer.id },
+    });
   } else {
     if (hold.stripePaymentIntentId) {
       await refundPaymentIntent(hold.stripePaymentIntentId);

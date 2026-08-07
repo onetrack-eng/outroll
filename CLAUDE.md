@@ -158,9 +158,36 @@ the first `npm install`).
   debugging `src/app/api/webhooks/stripe/route.ts`.
 - **Local webhook forwarding**: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
   (Stripe CLI, `stripe login` once to authenticate — token expires after 90 days per-machine).
-- **Not yet tested**: a real artist checkout (charge → hold → accept → post → payout) end to
-  end. Connect/onboarding is proven; the payment-collection side (`/api/checkout`,
-  `/api/checkout/confirm`) has not been exercised against the real keys yet.
+- **Full artist checkout → payout loop verified end-to-end**, real test-mode keys, real
+  browser checkout with card `4242 4242 4242 4242`: `/api/checkout` → `/api/checkout/confirm`
+  created a manual-capture PaymentIntent (`status: requires_capture`, correct `campaignId`/
+  `holdId` metadata) and a `PENDING` Hold; curator accept captured it immediately
+  (`status: succeeded`, `amount_received` matched); posting a live link moved the Hold to
+  `POSTED`; `npm run cron:deadlines` released a real `Transfer` to the connected account
+  (`destination` matched, `holdId` metadata matched) once the dispute window passed and moved
+  the Hold to `PAID`. Ran twice against curator **"onetrack"** (`acct_1U1rtcEmobpRfO27`, the
+  only seeded curator with a completed Connect account — the other two seeded test curators have
+  no `stripeAccountId` and can't reach payout).
+- **Test-mode gotcha found doing the above**: a captured charge only lands in **pending**
+  balance, not **available** balance, and `stripe.transfers.create()` can only draw from
+  available balance — so the deadline sweep's payout step will fail in test mode with
+  "insufficient available funds" even though the charge clearly succeeded. Fix used here: fund
+  available balance directly with a legacy Charge against the special test token
+  `tok_bypassPending` (maps to card `4000000000000077` — raw card numbers are blocked by the
+  API by default): `curl https://api.stripe.com/v1/charges -u "$STRIPE_SECRET_KEY:" -d
+  amount=20000 -d currency=usd -d source=tok_bypassPending`. See
+  https://stripe.com/docs/testing#available-balance. Not needed in live mode.
+- **Bug found and fixed while testing the payout path**: both `src/lib/deadlineSweep.ts` and
+  `src/app/api/admin/disputes/[id]/resolve/route.ts` called `transferToCurator()` and discarded
+  the returned Transfer object, so `Hold.stripeTransferId` was never written even on a
+  successful payout (`Hold.status` correctly went to `PAID`, but the transfer ID — needed to
+  reconcile a payout against Stripe — was silently lost). Fixed in both spots to store
+  `transfer.id`; verified by re-running a full checkout → accept → post → sweep cycle and
+  confirming `stripeTransferId` populated.
+- **To re-exercise this flow locally**: pick a listing belonging to a curator with a real
+  `stripeAccountId` (currently only "onetrack" qualifies — check with `SELECT username,
+  "stripeAccountId" FROM "Curator";`), since payout will error out for any curator who hasn't
+  finished Connect onboarding.
 
 ## Social account verification (`src/lib/socialAuth/`)
 
@@ -275,18 +302,25 @@ stay self-reported.
 
 ## Suggested next session
 
-Done already, in a prior session: local dev environment fully set up (Node, Docker, Postgres,
+Done already, in prior sessions: local dev environment fully set up (Node, Docker, Postgres,
 Stripe CLI all installed), `npm install`/`prisma generate`/`npm run build` all clean, admin
 seeded, and the apply → approve → curator signup → listing → browse → pitch submission →
 checkout-review portion of the happy path walked through live in the browser. Real Stripe
-test-mode keys are configured and Connect/Express onboarding is verified working end to end —
-see "Stripe test-mode setup" above before redoing any of that investigation.
+test-mode keys are configured and Connect/Express onboarding is verified working end to end.
+**The entire money flow is now verified end to end**: artist checkout → manual-capture
+PaymentIntent → curator accept (immediate capture) → post → deadline sweep → real Transfer
+landing on the connected account — see "Stripe test-mode setup" above for exactly what was run
+and a bug that was found and fixed along the way (`Hold.stripeTransferId` wasn't being saved on
+payout).
 
-What's left of the happy path:
+The happy path (checkout through payout) is now fully exercised. Next priorities, from the
+"Known simplifications" list above:
 
-1. Run an actual artist checkout with a real Stripe test card (`4242 4242 4242 4242` or similar)
-   through to a captured PaymentIntent and created Hold — this has not been exercised yet.
-2. Curator accepts → posts a live link → run `npm run cron:deadlines` (or wait out the windows)
-   → confirm the Transfer payout actually lands on the connected account.
-3. Then work down the "Known simplifications" list above, roughly in priority order — items 1
-   (3DS handling) and 4 (no tests) matter most given real money is now flowing through this.
+1. **No automated tests exist** (item 4) — now the highest-priority item given real money
+   demonstrably flows through this end to end. Prioritize `computeCharge`, `addBusinessDays`,
+   the checkout confirm unwind path, and the deadline sweep's three transitions (including a
+   regression test for the `stripeTransferId` bug just fixed).
+2. **3D Secure / SCA is not handled** (item 1) — the checkout run this session used a
+   non-3DS test card, so this path is still unexercised; worth deciding the fix approach
+   deliberately (client-side confirmation vs. webhook-driven).
+3. Then continue down the rest of the "Known simplifications" list in priority order.
