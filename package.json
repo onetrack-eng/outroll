@@ -11,7 +11,10 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "cron:deadlines": "tsx scripts/run-deadline-sweep.ts"
+    "cron:deadlines": "tsx scripts/run-deadline-sweep.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
@@ -35,6 +38,7 @@
     "@types/node": "^20.16.10",
     "@types/react": "^18.3.10",
     "@types/react-dom": "^18.3.0",
+    "@vitest/coverage-v8": "^4.1.10",
     "autoprefixer": "^10.4.20",
     "dotenv": "^16.4.5",
     "eslint": "^8.57.1",
@@ -43,7 +47,8 @@
     "prisma": "^5.19.1",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.2"
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.10"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,
