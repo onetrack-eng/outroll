@@ -1,0 +1,257 @@
+// Placement.fm — Prisma schema
+// See CLAUDE.md for the full product spec this models.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Platform {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE_SHORTS
+  FACEBOOK_REELS
+  TWITTER_X
+  SNAPCHAT
+  THREADS
+  TWITCH
+  SOUNDCLOUD
+  SPOTIFY_PLAYLIST
+}
+
+enum Genre {
+  POP
+  HIP_HOP_RAP
+  RNB
+  ROCK
+  COUNTRY
+  ELECTRONIC_DANCE
+  LATIN
+  INDIE_ALTERNATIVE
+  KPOP
+  AFROBEATS
+  REGGAE
+  JAZZ
+  METAL
+  FOLK
+  CHRISTIAN_GOSPEL
+  OTHER
+}
+
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
+// Per-curator submission lifecycle (spec section 3).
+enum HoldStatus {
+  PENDING // awaiting curator accept/decline
+  ACCEPTED // curator accepted, PaymentIntent captured, awaiting post
+  DECLINED // curator declined, hold released
+  REFUNDED // auto-declined (timeout) or post-deadline missed
+  POSTED // live post link submitted, in 1-week dispute window
+  DISPUTED // artist filed a dispute during the payout window
+  PAID // payout window closed clean, curator paid out
+}
+
+enum DisputeResolution {
+  CURATOR_PAID
+  ARTIST_REFUNDED
+}
+
+// --- Curators ------------------------------------------------------------
+
+model CuratorApplication {
+  id            String            @id @default(cuid())
+  email         String
+  proposedUsername String
+  platform      Platform
+  genre         Genre
+  followerCount Int
+  profileUrl    String
+  message       String            @db.Text
+  status        ApplicationStatus @default(PENDING)
+  // One-time signup link issued on approval; consumed once the curator sets a password.
+  signupToken     String?  @unique
+  signupTokenUsed Boolean  @default(false)
+  reviewedAt      DateTime?
+  reviewedNote    String?
+  curator         Curator?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Curator {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  username    String   @unique
+  passwordHash String
+  displayName String
+  platform    Platform
+  genre       Genre
+  followerCount Int
+  profileUrl  String
+
+  stripeAccountId          String?
+  stripeOnboardingComplete Boolean @default(false)
+
+  applicationId String              @unique
+  application   CuratorApplication  @relation(fields: [applicationId], references: [id])
+
+  listings          Listing[]
+  holds             Hold[]
+  socialConnections SocialConnection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One verified OAuth connection per curator per platform, for the platforms where a real
+// follower-count API is reachable without a paid tier (YouTube, TikTok, Instagram, Facebook —
+// see src/lib/socialAuth/). Listing on one of these platforms requires a row here first; see
+// GATED_PLATFORMS in src/lib/constants.ts. Tokens are stored in plaintext for this MVP — a
+// documented simplification, not an oversight (see src/lib/socialAuth/README notes).
+model SocialConnection {
+  id             String    @id @default(cuid())
+  curatorId      String
+  curator        Curator   @relation(fields: [curatorId], references: [id])
+  platform       Platform
+  externalUserId String
+  externalHandle String?
+  followerCount  Int
+  accessToken    String    @db.Text
+  refreshToken   String?   @db.Text
+  tokenExpiresAt DateTime?
+  connectedAt    DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([curatorId, platform])
+}
+
+model Listing {
+  id        String   @id @default(cuid())
+  curatorId String
+  curator   Curator  @relation(fields: [curatorId], references: [id])
+
+  platform  Platform
+  genre     Genre
+  priceCents Int
+  isPaused  Boolean  @default(false)
+
+  holds Hold[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([platform, genre, isPaused])
+}
+
+// --- Campaigns & holds -----------------------------------------------------
+
+// One artist checkout. May bundle holds against several curators.
+model Campaign {
+  id     String @id @default(cuid())
+  artistEmail String
+  artistName  String?
+
+  // Magic-link auth: unlike a one-time reset token, this is a long-lived bookmarkable
+  // credential (spec section 2 — the emailed link *is* the dashboard, reused for every status
+  // update), so it's stored directly rather than hashed. It's a high-entropy random string
+  // (see lib/magicLink.ts), so this is the same trust model as e.g. a Stripe customer portal link.
+  magicLinkToken String @unique
+
+  stripeCustomerId String?
+
+  currency String @default("usd")
+
+  holds Hold[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// One curator's slot within a campaign — the unit everything (payment, deadlines, disputes) hangs off.
+model Hold {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id])
+  listingId  String
+  listing    Listing  @relation(fields: [listingId], references: [id])
+  curatorId  String
+  curator    Curator  @relation(fields: [curatorId], references: [id])
+
+  // Pitch, captured at submission time (spec section 2, Artists). assetLink accepts any secure
+  // cloud-storage folder (Google Drive, Dropbox, OneDrive, Box, iCloud — see
+  // ALLOWED_ASSET_LINK_HOSTS in src/lib/constants.ts), scoped to visual assets only
+  // (photos/video for the post itself — cover art, artist photos, slideshow content), not
+  // audio. narrative is the short one-line story the curator should build the post around
+  // (e.g. "[Artist] gets noticed by Ariana Grande"); context is optional supporting detail for
+  // that story.
+  assetLink String
+  narrative String @db.Text
+  context   String @db.Text @default("")
+
+  // Pricing snapshot at submission time — curator's listed price stays stable even if they edit the listing later.
+  // totalChargeCents = priceCents + platformFeeCents (curator price + platform's 20% fee on top).
+  priceCents       Int
+  platformFeeCents Int
+  totalChargeCents Int
+
+  status HoldStatus @default(PENDING)
+
+  stripePaymentIntentId String?
+  stripeTransferId      String?
+
+  // Deadlines (business days per spec section 3; see lib/businessDays.ts).
+  acceptDeadline DateTime // 7 business days from checkout
+  respondedAt    DateTime? // curator accepted or declined
+  postDeadline   DateTime? // set on accept: 7 business days from acceptance
+  postedAt       DateTime?
+  postUrl        String?
+  payoutReleaseAt DateTime? // set on post: postedAt + 1 calendar week
+
+  refundedAt DateTime?
+  paidAt     DateTime?
+
+  dispute Dispute?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([acceptDeadline])
+  @@index([postDeadline])
+  @@index([payoutReleaseAt])
+}
+
+model Dispute {
+  id     String @id @default(cuid())
+  holdId String @unique
+  hold   Hold   @relation(fields: [holdId], references: [id])
+
+  reason String @db.Text
+
+  status     String             @default("OPEN") // OPEN | RESOLVED
+  resolution DisputeResolution?
+  adminNote  String?
+
+  filedAt    DateTime  @default(now())
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- Admin -----------------------------------------------------------------
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
