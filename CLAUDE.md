@@ -247,28 +247,43 @@ stay self-reported.
   - No disconnect/reconnect UI — once connected, there's no way for a curator to unlink an
     account from the dashboard (would need a direct DB delete today).
 
-## Known simplifications — the real follow-up list
-
-1. **3D Secure / SCA is not handled.** `/api/checkout/confirm` confirms each curator's
-   PaymentIntent server-side with `off_session: true`. If a card requires authentication, that
-   call will throw and the whole checkout unwinds — the artist just sees "payment failed," even
-   though on-session confirmation might have succeeded. Fixing this properly means either
-   confirming each PaymentIntent client-side (N sequential 3DS prompts for an N-curator
-   campaign — clunky) or moving to webhook-driven confirmation. Worth deciding deliberately
-   rather than patching around.
+1. ~~**3D Secure / SCA is not handled.**~~ **Fixed.** Checkout confirmation moved client-side.
+   `/api/checkout/confirm` now creates one manual-capture PaymentIntent per hold with
+   `confirm: false` (see the comment on `createHoldPaymentIntent` in `src/lib/stripe.ts`) and
+   returns each one's `clientSecret`; `CheckoutPaymentStep.tsx` confirms them one at a time via
+   `stripe.confirmCardPayment`, which lets Stripe pop a 3D Secure challenge in-page when a card
+   needs one, and shows "Confirming payment N of M…" while it works through a multi-curator
+   campaign. Two new routes replace what the old single confirm step did: `/api/checkout/abort`
+   (cancels every PaymentIntent already created for the campaign and deletes the draft
+   Campaign/Holds — used when a confirmation fails partway through) and `/api/checkout/finalize`
+   (re-verifies every hold's PaymentIntent is actually `requires_capture` directly against
+   Stripe — not just trusting the client's word for it — before sending the artist/curator
+   emails). Verified live in the browser against real Stripe test-mode keys, all three paths:
+   plain card (`4242...`, regression check), 3DS success (`4000002500003155` + "Complete" — two
+   sequential challenges appeared, one for the SetupIntent's card save and one for the hold's
+   PaymentIntent, both had to be completed), and 3DS failure (same card + "Fail" on the second
+   challenge — confirmed `/api/checkout/abort` fired, the PaymentIntent was left/moved to
+   `canceled` on Stripe, and no orphaned Campaign/Hold row was left in Postgres). Test coverage
+   for the three routes is in `src/app/api/checkout/{confirm,abort,finalize}/route.test.ts`.
 2. **Multi-PaymentIntent checkout is inherently non-atomic** at the Stripe level — there's no
-   way to authorize N separate holds as a single atomic operation. The unwind-on-failure logic
-   in `/api/checkout/confirm` handles the common case (a card fails) but hasn't been tested
-   against real race conditions (e.g. network timeout after Stripe processes but before our
-   response). Consider idempotency keys on `createHoldPaymentIntent` calls.
+   way to authorize N separate holds as a single atomic operation. Now that confirmation happens
+   client-side (see item 1), this got slightly worse in one respect: the browser tab could be
+   closed mid-loop after some holds are confirmed but before `/api/checkout/finalize` runs,
+   leaving a campaign whose Holds have real authorized PaymentIntents but that never got emailed
+   out or otherwise surfaced to the artist or curators — there's no retry/resume path for that
+   today. `/api/checkout/abort` and `/api/checkout/finalize` both handle the failure and success
+   cases that complete in-browser, but this stuck-mid-loop case isn't handled. Also still true:
+   no idempotency keys on `createHoldPaymentIntent`, so a network retry could theoretically
+   double-create a PaymentIntent for the same hold.
 3. **Card authorization windows and business-day deadlines can drift.** Card networks generally
    expire uncaptured manual-capture authorizations around 7 days; the accept window is 7
    *business* days (up to 9 calendar days across a weekend). A hold could theoretically expire
    at the card network level before our own deadline sweep gets to it. Worth monitoring
    `payment_intent.canceled` / `requires_capture`-expiry behavior once this is live in test mode.
-4. **No automated tests exist.** Given the money-handling nature of this app, prioritize tests
-   for: `computeCharge`, `addBusinessDays`, the checkout confirm unwind path, and the deadline
-   sweep's three transitions, before adding new features.
+4. ~~**No automated tests exist.**~~ **Fixed.** Vitest is set up (`npm test` / `test:watch` /
+   `test:coverage`); 35 tests cover `computeCharge`, the business-day math, the checkout
+   confirm/abort/finalize routes (including the unwind path), and the deadline sweep's three
+   transitions. Worth adding to as new logic lands, but the originally-flagged gap is closed.
 5. **The deadline sweep (`src/lib/deadlineSweep.ts`) has no locking.** If it's ever invoked
    concurrently (e.g. overlapping cron runs), the same hold could be processed twice. Low risk
    at hourly cadence but worth a `SELECT ... FOR UPDATE` or advisory lock if cadence increases.
@@ -292,7 +307,7 @@ stay self-reported.
 | Any Stripe call | `src/lib/stripe.ts` |
 | Any email | `src/lib/resend.ts` |
 | Auth / sessions | `src/lib/session.ts`, `src/lib/auth.ts`, `src/middleware.ts` |
-| Checkout flow | `src/app/api/checkout/`, `src/components/CheckoutPaymentStep.tsx`, `src/app/checkout/page.tsx` |
+| Checkout flow | `src/app/api/checkout/{route,confirm,abort,finalize}.ts`, `src/components/CheckoutPaymentStep.tsx`, `src/app/checkout/page.tsx` |
 | Curator accept/decline/post logic | `src/app/api/curator/submissions/[id]/*` |
 | Dispute resolution | `src/app/api/admin/disputes/[id]/resolve/route.ts` |
 | Auto-decline / auto-refund / auto-payout | `src/lib/deadlineSweep.ts`, `src/app/api/cron/deadlines/route.ts` |
@@ -313,14 +328,19 @@ landing on the connected account — see "Stripe test-mode setup" above for exac
 and a bug that was found and fixed along the way (`Hold.stripeTransferId` wasn't being saved on
 payout).
 
-The happy path (checkout through payout) is now fully exercised. Next priorities, from the
-"Known simplifications" list above:
+The happy path (checkout through payout) is fully exercised, tests exist (item 4, fixed), and
+3D Secure is handled and verified live against real Stripe test-mode keys — both success and
+failure paths, including the abort/cleanup path (item 1, fixed). See both items above for what
+was actually run.
 
-1. **No automated tests exist** (item 4) — now the highest-priority item given real money
-   demonstrably flows through this end to end. Prioritize `computeCharge`, `addBusinessDays`,
-   the checkout confirm unwind path, and the deadline sweep's three transitions (including a
-   regression test for the `stripeTransferId` bug just fixed).
-2. **3D Secure / SCA is not handled** (item 1) — the checkout run this session used a
-   non-3DS test card, so this path is still unexercised; worth deciding the fix approach
-   deliberately (client-side confirmation vs. webhook-driven).
-3. Then continue down the rest of the "Known simplifications" list in priority order.
+Next priorities, from the "Known simplifications" list above:
+
+1. **Item 2's newly-added gap**: a browser tab closed mid-confirmation-loop (some holds
+   authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
+   retry/resume path and no visibility for the artist. Worth deciding whether that needs a
+   sweep of its own (e.g. a cron job that finds old Campaigns with no emailed dashboard link but
+   fully-authorized Holds and finalizes them) or just needs to happen rarely enough not to
+   matter for an MVP.
+2. **Item 3**: card-authorization-window vs. business-day-deadline drift — still just a
+   theoretical risk, not yet monitored or tested against.
+3. Then continue down the rest of the "Known simplifications" list (5–9) in priority order.

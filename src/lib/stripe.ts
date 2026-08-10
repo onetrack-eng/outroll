@@ -42,7 +42,12 @@ export async function createAccountOnboardingLink(accountId: string) {
 }
 
 /** One manual-capture PaymentIntent per curator hold — this is the "separate hold per curator,
- *  shown as a line-item breakdown" from spec section 3. */
+ *  shown as a line-item breakdown" from spec section 3. Created with `confirm: false` — it's
+ *  attached to the customer's saved payment method but deliberately left unconfirmed here.
+ *  Confirmation happens client-side, one hold at a time (see CheckoutPaymentStep.tsx), because
+ *  an off-session confirmation can't surface a 3D Secure challenge to the customer: Stripe just
+ *  throws `authentication_required` instead of returning a next_action. Confirming on-session
+ *  lets Stripe pop the challenge automatically when a card needs one. */
 export async function createHoldPaymentIntent(params: {
   amountCents: number;
   customerId: string;
@@ -56,8 +61,7 @@ export async function createHoldPaymentIntent(params: {
     customer: params.customerId,
     payment_method: params.paymentMethodId,
     capture_method: 'manual',
-    confirm: true,
-    off_session: true,
+    confirm: false,
     metadata: { holdId: params.holdId, campaignId: params.campaignId },
   });
 }

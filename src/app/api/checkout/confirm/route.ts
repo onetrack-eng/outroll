@@ -5,12 +5,16 @@ import { createHoldPaymentIntent, cancelPaymentIntent } from '@/lib/stripe';
 import { generateMagicLinkToken, magicLinkUrl } from '@/lib/magicLink';
 import { addBusinessDays } from '@/lib/businessDays';
 import { CURATOR_ACCEPT_WINDOW_BUSINESS_DAYS } from '@/lib/constants';
-import { sendMagicLinkEmail, sendCuratorNewSubmissionEmail } from '@/lib/resend';
 
 // Step 2 of checkout: card is saved (client already confirmed the SetupIntent), so now we
 // create the real Campaign + one Hold per curator, and one manual-capture PaymentIntent per
-// Hold (spec section 3: "a separate hold is placed per curator"). If any PaymentIntent fails,
-// we unwind everything already created rather than leave a half-charged campaign behind.
+// Hold (spec section 3: "a separate hold is placed per curator") — created but *not confirmed*
+// here. Confirmation happens client-side next, one hold at a time (see
+// CheckoutPaymentStep.tsx and /api/checkout/finalize), so that a card requiring 3D Secure can
+// actually challenge the customer instead of failing under off-session confirmation. If any
+// PaymentIntent fails to even get created, we unwind everything already created rather than
+// leave a half-built campaign behind; if creation succeeds but a later client-side confirmation
+// fails, /api/checkout/abort does the equivalent unwind.
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const checkoutToken = body?.checkoutToken as string | undefined;
@@ -39,7 +43,7 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const createdHolds: { id: string; paymentIntentId: string; curatorId: string; listingId: string }[] = [];
+  const createdHolds: { id: string; paymentIntentId: string; clientSecret: string }[] = [];
 
   try {
     for (const pitch of draft.pitches) {
@@ -66,6 +70,10 @@ export async function POST(req: NextRequest) {
         campaignId: campaign.id,
       });
 
+      if (!paymentIntent.client_secret) {
+        throw new Error(`PaymentIntent ${paymentIntent.id} was created without a client secret`);
+      }
+
       await prisma.hold.update({
         where: { id: hold.id },
         data: { stripePaymentIntentId: paymentIntent.id },
@@ -74,14 +82,14 @@ export async function POST(req: NextRequest) {
       createdHolds.push({
         id: hold.id,
         paymentIntentId: paymentIntent.id,
-        curatorId: pitch.curatorId,
-        listingId: pitch.listingId,
+        clientSecret: paymentIntent.client_secret,
       });
     }
   } catch (err) {
-    // Unwind: cancel any PaymentIntents already authorized, then delete the Campaign
-    // (Holds cascade via the failed loop iteration never having written a PI, but we still
-    // need to clean up rows created before the failure).
+    // Unwind: cancel any PaymentIntents already created, then delete the Campaign/Holds
+    // rather than leave a half-built campaign behind. Nothing has been charged at this point
+    // (every PaymentIntent above was created unconfirmed), so this is just cleanup, not a
+    // refund.
     for (const h of createdHolds) {
       await cancelPaymentIntent(h.paymentIntentId).catch(() => {});
     }
@@ -90,31 +98,14 @@ export async function POST(req: NextRequest) {
 
     console.error('Checkout confirm failed', err);
     return NextResponse.json(
-      { error: 'Your card could not be charged. Please check your details and try again.' },
+      { error: 'Something went wrong setting up your campaign. Please try again.' },
       { status: 402 }
     );
   }
 
-  const dashboardUrl = magicLinkUrl(rawToken);
-
-  await sendMagicLinkEmail(draft.artistEmail, dashboardUrl, createdHolds.length);
-
-  const curators = await prisma.curator.findMany({
-    where: { id: { in: createdHolds.map((h) => h.curatorId) } },
+  return NextResponse.json({
+    campaignId: campaign.id,
+    magicLinkUrl: magicLinkUrl(rawToken),
+    holds: createdHolds.map((h) => ({ holdId: h.id, clientSecret: h.clientSecret })),
   });
-  const curatorById = new Map(curators.map((c) => [c.id, c]));
-  const artistLabel = draft.artistName ?? draft.artistEmail;
-
-  for (const h of createdHolds) {
-    const curator = curatorById.get(h.curatorId);
-    if (curator) {
-      await sendCuratorNewSubmissionEmail(
-        curator.email,
-        artistLabel,
-        `${process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}/curator/dashboard/submissions/${h.id}`
-      ).catch((err) => console.error('Failed to send curator notification', err));
-    }
-  }
-
-  return NextResponse.json({ magicLinkUrl: dashboardUrl });
 }
