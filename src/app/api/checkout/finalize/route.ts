@@ -37,7 +37,12 @@ export async function POST(req: NextRequest) {
   }
 
   const dashboardUrl = magicLinkUrl(campaign.magicLinkToken);
-  await sendMagicLinkEmail(campaign.artistEmail, dashboardUrl, holds.length);
+  // Payment is already fully authorized at this point — an email provider hiccup (unverified
+  // domain, rate limit, etc.) must not turn into a 500 for a customer who was just charged.
+  // The success response still carries the magic link either way (see CheckoutPaymentStep.tsx).
+  await sendMagicLinkEmail(campaign.artistEmail, dashboardUrl, holds.length).catch((err) =>
+    console.error('Failed to send artist magic link email', err)
+  );
 
   const artistLabel = campaign.artistName ?? campaign.artistEmail;
   for (const hold of holds) {

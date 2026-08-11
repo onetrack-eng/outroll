@@ -84,6 +84,25 @@ describe('POST /api/checkout/finalize', () => {
     );
   });
 
+  it('still returns the magic link even if the artist email fails to send', async () => {
+    // Payment is already fully authorized by this point in the flow -- a Resend hiccup
+    // (unverified domain, rate limit, etc.) must not turn into a 500 for a customer who was
+    // just charged.
+    holdFindMany.mockResolvedValue([
+      { id: 'hold-1', stripePaymentIntentId: 'pi_1', curator: { email: 'curator1@example.com' } },
+    ]);
+    paymentIntentsRetrieve.mockResolvedValue({ status: 'requires_capture' });
+    sendMagicLinkEmail.mockRejectedValue(new Error('domain not verified'));
+
+    const res = await POST(fakeRequest({ campaignId: 'campaign-1' }));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.magicLinkUrl).toBe('http://localhost:3000/dashboard/tok');
+    // The curator notification still goes out even though the artist email failed.
+    expect(sendCuratorNewSubmissionEmail).toHaveBeenCalledTimes(1);
+  });
+
   it('refuses to finalize (and sends no emails) if a PaymentIntent is not actually confirmed yet', async () => {
     // Guards against a buggy or malicious client calling finalize before every hold in the
     // campaign has actually cleared 3D Secure / confirmation on Stripe's side.

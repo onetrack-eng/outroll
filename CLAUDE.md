@@ -286,7 +286,15 @@ stay self-reported.
    transitions. Worth adding to as new logic lands, but the originally-flagged gap is closed.
 5. **The deadline sweep (`src/lib/deadlineSweep.ts`) has no locking.** If it's ever invoked
    concurrently (e.g. overlapping cron runs), the same hold could be processed twice. Low risk
-   at hourly cadence but worth a `SELECT ... FOR UPDATE` or advisory lock if cadence increases.
+   at low cadence but worth a `SELECT ... FOR UPDATE` or advisory lock if cadence increases.
+   `vercel.json`'s cron runs `/api/cron/deadlines` **once daily** (`0 0 * * *`, midnight UTC) —
+   not hourly as originally planned, because Vercel's Hobby (free) plan only allows daily cron
+   jobs. This means a hold that hits its accept/post/payout deadline can sit for up to ~24h
+   before the sweep processes it, instead of ~1h. Acceptable for now since every deadline window
+   in the spec is already measured in business days/weeks, but worth revisiting (either an
+   external scheduler hitting the endpoint hourly — it already accepts any caller with the right
+   `Authorization: Bearer $CRON_SECRET` header — or a Vercel Pro upgrade) if that slop ever
+   matters.
 6. **No rate limiting or abuse protection** anywhere — public application form, checkout,
    dispute filing are all wide open. Fine for an MVP behind low traffic, not fine at scale.
 7. **Curator application `proposedUsername` isn't reserved.** Someone could apply, get approved,
