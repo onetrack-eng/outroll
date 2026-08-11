@@ -4,11 +4,9 @@ import { redirect } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { GatedListingForm } from '@/components/GatedListingForm';
-import { ListingPauseToggle } from '@/components/ListingPauseToggle';
+import { ListingRow } from '@/components/ListingRow';
 import {
-  formatCents,
   platformLabel,
-  genreLabel,
   GATED_PLATFORMS,
   TWITTER_X_COMING_SOON,
   PROFILE_URL_BASE,
@@ -115,15 +113,14 @@ export default async function CuratorListingsPage({
 
       <div className="space-y-3">
         {listings.map((listing) => (
-          <Card key={listing.id} className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Badge>{platformLabel(listing.platform)}</Badge>
-              <Badge tone="neutral">{genreLabel(listing.genre)}</Badge>
-              <span className="font-medium text-ink">{formatCents(listing.priceCents)}</span>
-              {listing.isPaused && <Badge tone="warning">Paused</Badge>}
-            </div>
-            <ListingPauseToggle listingId={listing.id} isPaused={listing.isPaused} />
-          </Card>
+          <ListingRow
+            key={listing.id}
+            id={listing.id}
+            platform={listing.platform}
+            genre={listing.genre}
+            priceCents={listing.priceCents}
+            isPaused={listing.isPaused}
+          />
         ))}
         {listings.length === 0 && <p className="text-muted">No listings yet — add one above.</p>}
       </div>

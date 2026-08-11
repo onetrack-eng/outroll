@@ -43,6 +43,15 @@ export const listingCreateSchema = z.object({
   priceCents: z.coerce.number().int().min(500, 'Minimum price is $5.00'),
 });
 
+export const listingUpdateSchema = z
+  .object({
+    priceCents: z.coerce.number().int().min(500, 'Minimum price is $5.00').optional(),
+    isPaused: z.boolean().optional(),
+  })
+  .refine((data) => data.priceCents !== undefined || data.isPaused !== undefined, {
+    message: 'Nothing to update',
+  });
+
 // No `listings` field — every platform now requires OAuth verification (see GATED_PLATFORMS in
 // @/lib/constants), which needs an authenticated curator to exist first, so listings are only
 // ever created after signup from the dashboard's "Connect account" flow.

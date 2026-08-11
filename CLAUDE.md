@@ -511,6 +511,7 @@ platform later is a one-line change in that provider's module.
 | Auth / sessions | `src/lib/session.ts`, `src/lib/auth.ts`, `src/middleware.ts` |
 | Checkout flow | `src/app/api/checkout/{route,confirm,abort,finalize}.ts`, `src/components/CheckoutPaymentStep.tsx`, `src/app/checkout/page.tsx` |
 | Curator accept/decline/post logic | `src/app/api/curator/submissions/[id]/*` |
+| Curator listing edit/pause/delete | `src/components/ListingRow.tsx`, `src/app/api/curator/listings/[id]/route.ts` — delete is blocked (409) for any listing with Hold history, since `Hold.listingId` has no cascade; curators get pause instead for those |
 | Dispute resolution | `src/app/api/admin/disputes/[id]/resolve/route.ts` |
 | Auto-decline / auto-refund / auto-payout | `src/lib/deadlineSweep.ts`, `src/app/api/cron/deadlines/route.ts` |
 | Data model | `prisma/schema.prisma` |
