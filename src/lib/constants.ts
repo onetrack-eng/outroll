@@ -77,6 +77,18 @@ export function isGatedPlatform(platform: string): platform is GatedPlatform {
   return (GATED_PLATFORMS as readonly string[]).includes(platform);
 }
 
+// Canonical profile URL base for a verified handle, keyed by gated platform. Used both to fill
+// CuratorApplication.profileUrl on OAuth verification and, for platforms with no follower-count
+// API (Snapchat), to link the "Verified" badge straight to the real profile so a buyer can check
+// the count themselves — see verifiedFollowerCounts.ts.
+export const PROFILE_URL_BASE: Record<GatedPlatform, string> = {
+  INSTAGRAM: 'https://instagram.com/',
+  FACEBOOK_REELS: 'https://facebook.com/',
+  TIKTOK: 'https://tiktok.com/@',
+  YOUTUBE_SHORTS: 'https://youtube.com/@',
+  SNAPCHAT: 'https://snapchat.com/add/',
+};
+
 export const GENRES = [
   { value: 'POP', label: 'Pop' },
   { value: 'HIP_HOP_RAP', label: 'Hip-Hop/Rap' },

@@ -5,7 +5,14 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { GatedListingForm } from '@/components/GatedListingForm';
 import { ListingPauseToggle } from '@/components/ListingPauseToggle';
-import { formatCents, platformLabel, genreLabel, GATED_PLATFORMS, TWITTER_X_COMING_SOON } from '@/lib/constants';
+import {
+  formatCents,
+  platformLabel,
+  genreLabel,
+  GATED_PLATFORMS,
+  TWITTER_X_COMING_SOON,
+  PROFILE_URL_BASE,
+} from '@/lib/constants';
 import { START_ROUTE_SEGMENT } from '@/lib/socialAuth';
 
 export const dynamic = 'force-dynamic';
@@ -57,7 +64,20 @@ export default async function CuratorListingsPage({
                   <div className="font-medium text-ink">{platformLabel(platform)}</div>
                   {connection ? (
                     <div className="text-sm text-muted">
-                      {connection.externalHandle && `@${connection.externalHandle} · `}
+                      {connection.externalHandle &&
+                        (connection.followerCount === null ? (
+                          <a
+                            href={`${PROFILE_URL_BASE[platform]}${connection.externalHandle}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline underline-offset-2 hover:text-ink"
+                          >
+                            @{connection.externalHandle}
+                          </a>
+                        ) : (
+                          `@${connection.externalHandle}`
+                        ))}
+                      {connection.externalHandle && ' · '}
                       {connection.followerCount !== null &&
                         `${connection.followerCount.toLocaleString('en-US')} followers · `}
                       Verified

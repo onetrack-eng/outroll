@@ -1,18 +1,7 @@
 import { prisma } from '@/lib/db';
 import { verifyConnectState } from './state';
 import { exchangeCode, fetchProfile } from './index';
-import type { GatedPlatform } from '@/lib/constants';
-
-// Canonical profile URL for a verified handle, used to fill CuratorApplication.profileUrl when
-// an applicant verifies via OAuth instead of pasting a link manually. Not every provider
-// returns a handle (see fetchProfile in each provider module), so this is best-effort.
-const PROFILE_URL_BASE: Record<GatedPlatform, string> = {
-  INSTAGRAM: 'https://instagram.com/',
-  FACEBOOK_REELS: 'https://facebook.com/',
-  TIKTOK: 'https://tiktok.com/@',
-  YOUTUBE_SHORTS: 'https://youtube.com/@',
-  SNAPCHAT: 'https://snapchat.com/add/',
-};
+import { PROFILE_URL_BASE, type GatedPlatform } from '@/lib/constants';
 
 // Shared by all three callback routes. Always resolves to a redirect path -- never throws --
 // so a failure partway through (expired state, provider error, revoked draft) still sends the

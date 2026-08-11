@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/Badge';
 import { formatCents, platformLabel, genreLabel } from '@/lib/constants';
 import { gradientForSeed } from '@/lib/gradients';
+import type { VerifiedConnection } from '@/lib/verifiedFollowerCounts';
 
 export interface ListingCardData {
   id: string;
@@ -14,17 +15,18 @@ export interface ListingCardData {
     followerCount: number;
     profilePhotoUrl?: string | null;
   };
-  // Present (key exists, possibly with a null value) when this platform has a verified OAuth
-  // connection — takes priority over the curator's self-reported followerCount, which only
-  // covers whichever platform they applied under. Null means ownership is verified but the
-  // platform has no follower-count API (Snapchat today) — show "Verified" with no number.
-  verifiedFollowerCount?: number | null;
+  // Present when this platform has a verified OAuth connection — takes priority over the
+  // curator's self-reported followerCount, which only covers whichever platform they applied
+  // under. `followerCount: null` means ownership is verified but the platform has no
+  // follower-count API (Snapchat today); the card itself just shows "Verified" with no number —
+  // the clickable link to the real profile (`verified.profileUrl`) lives on the listing detail
+  // page instead, since this whole card is already one big link and anchors can't nest.
+  verified?: VerifiedConnection;
 }
 
 export function ListingCard({ listing }: { listing: ListingCardData }) {
-  const verified = listing.verifiedFollowerCount !== undefined;
-  const followerCount =
-    listing.verifiedFollowerCount !== undefined ? listing.verifiedFollowerCount : listing.curator.followerCount;
+  const verified = listing.verified !== undefined;
+  const followerCount = verified ? listing.verified!.followerCount : listing.curator.followerCount;
   const photoUrl = listing.curator.profilePhotoUrl;
 
   return (

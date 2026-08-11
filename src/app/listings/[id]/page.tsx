@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Avatar } from '@/components/ui/Avatar';
 import { AddToCampaignForm } from '@/components/AddToCampaignForm';
-import { formatCents, platformLabel, genreLabel } from '@/lib/constants';
+import { formatCents, platformLabel, genreLabel, isGatedPlatform, PROFILE_URL_BASE } from '@/lib/constants';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +24,12 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
   // connection.followerCount is null for a verified-but-count-less platform (Snapchat) — show
   // no number rather than falling back to the curator's unrelated self-reported count.
   const followerCount = verified ? connection.followerCount : listing.curator.followerCount;
+  // No follower-count API for this platform (Snapchat today) — link straight to the real
+  // profile instead, so a buyer who wants a number can go see it themselves.
+  const externalProfileUrl =
+    verified && followerCount === null && connection.externalHandle && isGatedPlatform(listing.platform)
+      ? `${PROFILE_URL_BASE[listing.platform]}${connection.externalHandle}`
+      : null;
 
   return (
     <div className="mx-auto max-w-content px-6 py-16">
@@ -52,6 +58,16 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
             {followerCount !== null && verified && ' '}
             {verified && '(verified)'} — view profile
           </Link>
+          {externalProfileUrl && (
+            <a
+              href={externalProfileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-3 text-sm text-muted underline underline-offset-2 hover:text-ink"
+            >
+              View on {platformLabel(listing.platform)} →
+            </a>
+          )}
 
           <div className="mt-10 text-4xl font-semibold tracking-tight text-ink">
             {formatCents(listing.priceCents)}

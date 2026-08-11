@@ -280,9 +280,17 @@ what's always been true at the *application* step.
   `SocialConnection.followerCount` is nullable (`Int?`, migrated 2026-08-11) and Snapchat
   connections always store `null` there; every UI that displays a verified follower count
   (`ListingCard`, `/listings/[id]`, the curator dashboard's "Verified accounts" card) was updated
-  to show "Verified" with no number when the count is null, rather than falling back to the
-  curator's unrelated self-reported `Curator.followerCount` (which would have been misleading —
-  a real number attached to the wrong platform). Bitmoji avatar is downloaded and re-encoded as a
+  to skip the number when it's null, rather than falling back to the curator's unrelated
+  self-reported `Curator.followerCount` (which would have been misleading — a real number
+  attached to the wrong platform). Refined again same day, per product decision: rather than just
+  showing a bare "Verified" with no number, `/listings/[id]` and the curator dashboard now link
+  straight to the real profile (`PROFILE_URL_BASE` in `src/lib/constants.ts` + the connection's
+  `externalHandle`) whenever the count is null, so a buyer who wants a number can go see it
+  themselves — see `verifiedFollowerCountsFor` in `src/lib/verifiedFollowerCounts.ts`, which now
+  returns `{ followerCount, profileUrl? }` per connection instead of a bare number. `ListingCard`
+  itself still just shows "Verified" with no link (the whole card is already one big link to the
+  listing detail page, and anchors can't nest) — the clickable profile link only appears once you
+  land on `/listings/[id]` or the curator's own dashboard. Bitmoji avatar is downloaded and re-encoded as a
   data URL for the profile photo, same pattern as Instagram's `toDataUrl()`. **Not yet verified
   live against a real Snapchat account** — `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me`
   placeholders; needs a real Snap Developer Portal app registered and the flow exercised

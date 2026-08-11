@@ -45,7 +45,7 @@ export default async function CuratorProfilePage({ params }: { params: { id: str
                   followerCount: curator.followerCount,
                   profilePhotoUrl: curator.profilePhotoUrl,
                 },
-                verifiedFollowerCount: verifiedCounts.get(`${curator.id}:${listing.platform}`),
+                verified: verifiedCounts.get(`${curator.id}:${listing.platform}`),
               }}
             />
           ))}

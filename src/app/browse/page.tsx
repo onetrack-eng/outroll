@@ -48,7 +48,7 @@ export default async function BrowsePage({
               key={listing.id}
               listing={{
                 ...listing,
-                verifiedFollowerCount: verifiedCounts.get(`${listing.curatorId}:${listing.platform}`),
+                verified: verifiedCounts.get(`${listing.curatorId}:${listing.platform}`),
               }}
             />
           ))}
