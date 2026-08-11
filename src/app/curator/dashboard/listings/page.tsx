@@ -3,10 +3,9 @@ import { prisma } from '@/lib/db';
 import { redirect } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { ListingCreateForm } from '@/components/ListingCreateForm';
 import { GatedListingForm } from '@/components/GatedListingForm';
 import { ListingPauseToggle } from '@/components/ListingPauseToggle';
-import { formatCents, platformLabel, genreLabel, GATED_PLATFORMS } from '@/lib/constants';
+import { formatCents, platformLabel, genreLabel, GATED_PLATFORMS, TWITTER_X_COMING_SOON } from '@/lib/constants';
 import { START_ROUTE_SEGMENT } from '@/lib/socialAuth';
 
 export const dynamic = 'force-dynamic';
@@ -59,7 +58,9 @@ export default async function CuratorListingsPage({
                   {connection ? (
                     <div className="text-sm text-muted">
                       {connection.externalHandle && `@${connection.externalHandle} · `}
-                      {connection.followerCount.toLocaleString('en-US')} followers · Verified
+                      {connection.followerCount !== null &&
+                        `${connection.followerCount.toLocaleString('en-US')} followers · `}
+                      Verified
                     </div>
                   ) : (
                     <div className="text-sm text-muted">Not connected</div>
@@ -82,12 +83,14 @@ export default async function CuratorListingsPage({
               </div>
             );
           })}
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line px-4 py-3 opacity-60">
+            <div>
+              <div className="font-medium text-ink">{TWITTER_X_COMING_SOON.label}</div>
+              <div className="text-sm text-muted">Not available yet</div>
+            </div>
+            <Badge tone="neutral">Coming soon</Badge>
+          </div>
         </div>
-      </Card>
-
-      <Card className="mb-10">
-        <h2 className="mb-4 text-sm font-medium uppercase tracking-wide text-muted">New listing</h2>
-        <ListingCreateForm />
       </Card>
 
       <div className="space-y-3">

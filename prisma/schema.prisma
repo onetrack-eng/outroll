@@ -152,7 +152,10 @@ model SocialConnection {
   platform       Platform
   externalUserId String
   externalHandle String?
-  followerCount  Int
+  // Nullable because Snapchat's Login Kit proves ownership but has no official follower-count
+  // API (see src/lib/socialAuth/snapchat.ts) — its connections store null here. Every other
+  // gated platform still populates a real number.
+  followerCount  Int?
   accessToken    String    @db.Text
   refreshToken   String?   @db.Text
   tokenExpiresAt DateTime?

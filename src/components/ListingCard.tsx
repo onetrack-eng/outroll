@@ -14,15 +14,17 @@ export interface ListingCardData {
     followerCount: number;
     profilePhotoUrl?: string | null;
   };
-  // Present when this platform has a verified OAuth connection — takes priority over the
-  // curator's self-reported followerCount, which only covers whichever platform they applied
-  // under.
-  verifiedFollowerCount?: number;
+  // Present (key exists, possibly with a null value) when this platform has a verified OAuth
+  // connection — takes priority over the curator's self-reported followerCount, which only
+  // covers whichever platform they applied under. Null means ownership is verified but the
+  // platform has no follower-count API (Snapchat today) — show "Verified" with no number.
+  verifiedFollowerCount?: number | null;
 }
 
 export function ListingCard({ listing }: { listing: ListingCardData }) {
   const verified = listing.verifiedFollowerCount !== undefined;
-  const followerCount = listing.verifiedFollowerCount ?? listing.curator.followerCount;
+  const followerCount =
+    listing.verifiedFollowerCount !== undefined ? listing.verifiedFollowerCount : listing.curator.followerCount;
   const photoUrl = listing.curator.profilePhotoUrl;
 
   return (
@@ -52,7 +54,9 @@ export function ListingCard({ listing }: { listing: ListingCardData }) {
         <div className="p-5">
           <div className="mb-1 text-lg font-semibold text-ink">{listing.curator.displayName}</div>
           <div className="mb-4 text-sm text-muted">
-            {followerCount.toLocaleString('en-US')} followers{verified ? ' · Verified' : ''}
+            {followerCount !== null && `${followerCount.toLocaleString('en-US')} followers`}
+            {followerCount !== null && verified && ' · '}
+            {verified && 'Verified'}
           </div>
           <div className="text-2xl font-semibold tracking-tight text-ink">
             {formatCents(listing.priceCents)}

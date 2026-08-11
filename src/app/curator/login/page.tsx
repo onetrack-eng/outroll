@@ -17,7 +17,7 @@ export default function CuratorLoginPage() {
 function CuratorLoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,7 @@ function CuratorLoginForm() {
     const res = await fetch('/api/curator/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email, password }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -47,8 +47,14 @@ function CuratorLoginForm() {
       <Card>
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <Label htmlFor="username">Username</Label>
-            <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required />
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <div>
             <Label htmlFor="password">Password</Label>

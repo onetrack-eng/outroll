@@ -35,30 +35,41 @@ export function isSecureAssetLink(url: string): boolean {
   );
 }
 
+// Deliberately just 5 platforms — narrowed 2026-08-11 from an earlier 10-platform list. Twitter/X,
+// SoundCloud, Spotify Playlist, and Threads/Twitch were all cut: Twitter/X's API lost its free
+// tier in Feb 2026 (see TWITTER_X_COMING_SOON below — shown as "coming soon" instead of dropped
+// outright), SoundCloud now requires *us* to hold a paid Artist Pro subscription just to register
+// a developer app, Spotify's Extended Quota Mode now requires 250k+ MAU to scale past 5
+// authorized curators (unreachable at this stage), and Threads/Twitch were never part of the
+// product's actual platform list. Every remaining platform is gated — see GATED_PLATFORMS.
 export const PLATFORMS = [
   { value: 'INSTAGRAM', label: 'Instagram' },
-  { value: 'TIKTOK', label: 'TikTok' },
-  { value: 'YOUTUBE_SHORTS', label: 'YouTube Shorts' },
   { value: 'FACEBOOK_REELS', label: 'Facebook Reels' },
-  { value: 'TWITTER_X', label: 'Twitter/X' },
+  { value: 'YOUTUBE_SHORTS', label: 'YouTube Shorts' },
+  { value: 'TIKTOK', label: 'TikTok' },
   { value: 'SNAPCHAT', label: 'Snapchat' },
-  { value: 'THREADS', label: 'Threads' },
-  { value: 'TWITCH', label: 'Twitch' },
-  { value: 'SOUNDCLOUD', label: 'SoundCloud' },
-  { value: 'SPOTIFY_PLAYLIST', label: 'Spotify Playlist' },
 ] as const;
 
 export type PlatformValue = (typeof PLATFORMS)[number]['value'];
 
+// Not listable yet — shown as a disabled "coming soon" row on the curator dashboard, not part of
+// PLATFORMS (so it can't be selected, filtered on, or listed against). Revisit once there's
+// enough curator volume to justify X's pay-per-use API costs (a real but small ongoing cost —
+// see the PLATFORMS comment above).
+export const TWITTER_X_COMING_SOON = { value: 'TWITTER_X', label: 'Twitter/X' } as const;
+
 export function platformLabel(value: string): string {
+  if (value === TWITTER_X_COMING_SOON.value) return TWITTER_X_COMING_SOON.label;
   return PLATFORMS.find((p) => p.value === value)?.label ?? value;
 }
 
-// Platforms with a real, reachable follower-count API (no paid tier, no closed developer
-// registration — see src/lib/socialAuth/). Listing on one of these requires the curator to
-// connect the account first; see /api/curator/connections/[platform]/*. The other 6 platforms
-// stay self-reported for now.
-export const GATED_PLATFORMS = ['INSTAGRAM', 'FACEBOOK_REELS', 'TIKTOK', 'YOUTUBE_SHORTS'] as const;
+// Platforms with a real, reachable OAuth path for proving account ownership — see
+// src/lib/socialAuth/. Listing on one of these requires the curator to connect the account
+// first; see /api/curator/connections/[platform]/*. As of 2026-08-11 this is every listable
+// platform (see PLATFORMS above) — Snapchat's Login Kit joined the original four. Note Snapchat's
+// OAuth proves ownership but has no official follower-count API, so SocialConnection.followerCount
+// is nullable and Snapchat connections carry a null there — see completeConnection.ts.
+export const GATED_PLATFORMS = ['INSTAGRAM', 'FACEBOOK_REELS', 'TIKTOK', 'YOUTUBE_SHORTS', 'SNAPCHAT'] as const;
 
 export type GatedPlatform = (typeof GATED_PLATFORMS)[number];
 

@@ -37,12 +37,22 @@ part that took the real thought and should mostly survive as-is.
 
 **Outroll** (product name changed from the original "Placement.fm" scaffold — see git history
 for anything still referencing the old name) is a two-sided marketplace connecting artists with
-independent music curators
-across a wide set of platforms (see `src/lib/constants.ts` — `PLATFORMS`; expanded past the
-original four during a later session, no longer just Instagram/TikTok/YouTube Shorts/Facebook
-Reels). Curators list paid promotion slots; artists browse, submit pitches with assets, and pay
+independent music curators across a set of platforms (see `src/lib/constants.ts` — `PLATFORMS`).
+Curators list paid promotion slots; artists browse, submit pitches with assets, and pay
 through an escrow-style flow that only releases funds once a promo is confirmed live and
 undisputed. Design direction: restrained, minimal, premium — "Apple Store, not ad-tech."
+
+**Platform list narrowed 2026-08-11**: `PLATFORMS` is now just Instagram, Facebook Reels,
+YouTube Shorts, TikTok, and Snapchat — every one of them gated behind real OAuth ownership
+verification (see "Social account verification" below). An earlier, wider 10-platform list
+(which included Twitter/X, Threads, Twitch, SoundCloud, and Spotify Playlist, mostly
+self-reported) was cut back after checking each platform's actual 2026 API access live: Twitter/X
+lost its free API tier in Feb 2026 (pay-per-use now, cheap but requires billing setup — kept as
+a "coming soon" placeholder on the curator dashboard instead of dropped outright, see
+`TWITTER_X_COMING_SOON`), SoundCloud now requires *us* to hold a paid Artist Pro subscription
+just to register a developer app, and Spotify's Extended Quota Mode now requires 250k+ MAU to
+scale an OAuth app past 5 authorized users — none of these were worth building against yet.
+Threads and Twitch were dropped outright (never actually part of the intended platform list).
 
 ### Roles
 
@@ -54,10 +64,16 @@ one dispute per hold within a week of it going live, cannot cancel a submission 
 **Curators** — apply via public form, manually and subjectively approved. Applying requires
 connecting Instagram via OAuth (no self-reported follower count, no platform choice at
 application time — see "Social account verification" below); the verified follower count comes
-from that connection. Approved curators get a signup link and set username/password. For the
-other platforms with a real follower-count API (Facebook Reels, TikTok, YouTube Shorts) —
-must connect that account via OAuth before listing on it, which also fills in a live, verified
-follower count instead of a self-reported one. The remaining platforms stay self-reported.
+from that connection. Approved curators get a signup link and set username/password, then **log
+in with email** (not username — username is still their public handle/profile URL, just not the
+login credential; changed 2026-08-11, see `src/app/curator/login/`). Every listable platform
+(Instagram, Facebook Reels, TikTok, YouTube Shorts, Snapchat) now requires connecting that
+account via OAuth before listing on it — see `GATED_PLATFORMS` in `src/lib/constants.ts`. Most of
+these also fill in a live, verified follower count; Snapchat's Login Kit proves ownership but has
+no follower-count API, so that field is `null` for Snapchat connections (shown as "Verified" with
+no number — see the schema comment on `SocialConnection.followerCount`). Since every platform is
+now gated, listings are only ever created after signup, from the dashboard's "Connect account"
+flow — there's no more manual/self-reported listing path or at-signup pricing form.
 Curators also onboard via Stripe Connect Express. They set their own price per platform; platform adds
 20% on top. Listings show price/genre/platform/follower count (linked to profile). Curators can
 pause a listing without deleting it, and can keep accepting new submissions on an active listing
@@ -195,22 +211,21 @@ the first `npm install`).
 
 ## Social account verification (`src/lib/socialAuth/`)
 
-Fraud-prevention feature: a curator claiming to run an Instagram/TikTok/YouTube/Facebook page
-they don't actually control could otherwise get approved and take artist payments. For the four
-platforms with a real, reachable follower-count API, listing requires connecting the account
-via OAuth first — see `GATED_PLATFORMS` in `src/lib/constants.ts`. The other 6 platforms
-(Twitter/X, Snapchat, Threads, Twitch, SoundCloud, Spotify Playlist) don't have a realistic
-API path (paid tier, closed developer registration, or no creator-stats endpoint at all) and
-stay self-reported — but only for *listings*, added after signup; see below for what changed at
-the *application* step.
+Fraud-prevention feature: a curator claiming to run an Instagram/TikTok/YouTube/Facebook/Snapchat
+account they don't actually control could otherwise get approved and take artist payments. As of
+2026-08-11, **every platform in `PLATFORMS` is gated** — listing on any of them requires
+connecting the account via OAuth first — see `GATED_PLATFORMS` in `src/lib/constants.ts` (this
+used to be 4 of 10 platforms, with the rest self-reported; see the "Platform list narrowed"
+note earlier in this file for why the list itself shrank). Since there's no self-reported
+platform left, there's no more manual/self-reported *listing* path either — but see below for
+what's always been true at the *application* step.
 
 - **Applying now requires connecting Instagram — no exceptions, no self-reported follower
   count, no platform choice.** `/apply` collects just email/username/genre/message, then sends
   the applicant through Instagram's OAuth dialog before a real application ever exists. This is
   a deliberate product decision (every applicant is verified up front now, not just the ones
-  choosing a gated platform), not a technical default — the four-platform `GATED_PLATFORMS`
-  distinction above still governs *listings* after signup, where a curator can still add
-  self-reported platforms too.
+  choosing a gated platform), not a technical default — `GATED_PLATFORMS` above still governs
+  *listings* after signup, which is a separate step from application.
 - **Pre-account OAuth flow**: since applying happens before any `Curator` row exists, this
   reuses the same OAuth plumbing built for the curator dashboard's "Connect" button but keyed by
   a draft application id instead of an authenticated `curatorId` — see the `ConnectState`
@@ -252,6 +267,26 @@ the *application* step.
   rejects requests missing it. The verifier is generated in the `/start` route and carried
   through inside the signed state token (`src/lib/socialAuth/state.ts`) since it has to survive
   the redirect round trip.
+- **Snapchat (`src/lib/socialAuth/snapchat.ts`) added 2026-08-11** — Login Kit, a standard
+  self-serve OAuth 2.0 flow (Snap Developer Portal, no App Review wait, no paid tier — confirmed
+  live against Snap's current docs before building this, not assumed). Authorize at
+  `https://accounts.snapchat.com/accounts/oauth2/auth`, token exchange at
+  `https://accounts.snapchat.com/accounts/oauth2/token` with `client_secret` (no PKCE — Login
+  Kit only requires PKCE for public/client-side clients, not server-side confidential ones),
+  scopes `user.display_name` and `user.external_id`, then profile data via a GraphQL-style POST
+  to `https://kit.snapchat.com/v1/me` with body `{"query":"{me{displayName bitmoji{avatar}
+  externalId}}"}`. **Important asymmetry with every other provider here: Login Kit has no
+  official follower/subscriber-count API** — it only proves account ownership. So
+  `SocialConnection.followerCount` is nullable (`Int?`, migrated 2026-08-11) and Snapchat
+  connections always store `null` there; every UI that displays a verified follower count
+  (`ListingCard`, `/listings/[id]`, the curator dashboard's "Verified accounts" card) was updated
+  to show "Verified" with no number when the count is null, rather than falling back to the
+  curator's unrelated self-reported `Curator.followerCount` (which would have been misleading —
+  a real number attached to the wrong platform). Bitmoji avatar is downloaded and re-encoded as a
+  data URL for the profile photo, same pattern as Instagram's `toDataUrl()`. **Not yet verified
+  live against a real Snapchat account** — `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me`
+  placeholders; needs a real Snap Developer Portal app registered and the flow exercised
+  end-to-end before trusting it in production.
 - **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
   deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
   original build's Dec 2024 "Basic Display API killed" note was already aware something had
@@ -286,6 +321,11 @@ the *application* step.
     OAuth 2.0 Client (Web application) → enable the YouTube Data API v3 → add
     `{NEXT_PUBLIC_APP_URL}/api/curator/connections/youtube_shorts/callback` as an authorized
     redirect URI → put the client ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
+  - **Snapchat** — self-serve, no App Review wait (confirmed against Snap's current docs, see the
+    finding above). Create an account at the Snap Developer Portal (`developers.snap.com`) →
+    create an app → add Login Kit → request the `user.display_name` and `user.external_id`
+    scopes → redirect URI `{NEXT_PUBLIC_APP_URL}/api/curator/connections/snapchat/callback` →
+    put the client ID/secret in `.env` as `SNAPCHAT_CLIENT_ID`/`SNAPCHAT_CLIENT_SECRET`.
   - **TikTok** — TikTok for Developers account → create an app → add Login Kit → request the
     `user.info.basic` and `user.info.stats` scopes → this needs App Review (real product,
     real privacy policy, live domain) before scopes work for non-test users → redirect URI
@@ -324,19 +364,29 @@ the *application* step.
     Reels going forward, and even that needs a real fix, not just credentials.
   - **Instagram**: fully configured and verified. Real `INSTAGRAM_CLIENT_ID`/
     `INSTAGRAM_CLIENT_SECRET` are set in production, from a dedicated app (App ID
-    `1078180775160489`) created with **"Manage messaging & content on Instagram"** as its
+    `2796525164063265` — corrected 2026-08-11; an earlier version of this doc had
+    `1078180775160489`, which no longer resolves under the developer account that manages this
+    app and was likely a transcription error, not a real ID change) created with **"Manage
+    messaging & content on Instagram"** as its
     primary use case at creation — not Facebook Login. This distinction mattered: an earlier
     attempt created the app with Facebook Login as primary, and Meta's console then refused to
     let Pages/Instagram use cases be added afterward at all ("Add more use cases" only ever
     offered an unrelated Marketing API use case) — a real platform restriction, not a
     misconfiguration, confirmed by trying it twice. Starting from the Instagram use case
     directly avoided it entirely.
-  - **In progress as of this writing: getting Instagram verification approved for real (non-tester) applicants.** Status:
+  - **In progress as of this writing: getting Instagram verification approved for real (non-tester) applicants.** Status (checked live against the Meta dashboard on 2026-08-11):
     - The app is connected to a real Business Portfolio ("OneTrackMind").
     - `/privacy` (this codebase, linked from the site footer) now exists as the required privacy
       policy URL and has been entered in the app's Publish flow.
-    - `instagram_business_basic` has been added to App Review via the use case's Permissions
-      page → Actions → "Add to App Review" — not yet submitted/approved.
+    - **Business Verification: submitted, status "In review"** under legal entity "OneTrack Media
+      Inc." (`business.facebook.com/settings/security/?business_id=117968183604893`). Meta's own
+      estimate is ~2 business days from submission. Not yet approved as of 2026-08-11 — check back.
+    - **App Review: still "Not submitted."** Four permissions are queued under "New requests" on
+      the App Review page (`developers.facebook.com/apps/2796525164063265/app-review/`) —
+      `instagram_business_basic`, `instagram_business_manage_messages`, `instagram_manage_comments`,
+      and `public_profile` — each shows "In 1 use case," but none have actually been submitted for
+      review yet. Submitting requires stepping through Meta's request flow per permission (usage
+      justification, and typically a screencast demonstrating the exact usage) — not done yet.
     - Business Verification is in progress. It requires a working inbox at the business's email
       domain; **`admin@outroll.me`** was set up via Namecheap Private Email (a paid product,
       currently on its free trial) for this. Real gotcha hit here: the MX records
@@ -350,9 +400,9 @@ the *application* step.
     - Until App Review is approved and the app is published, Instagram verification only works
       for accounts added as Testers under **App roles → Roles** (this is Meta's standard
       Development-mode restriction, not specific to this app).
-  - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still the `replace_me`
-    placeholders — Google/YouTube next since it's self-serve with no App Review wait, unlike
-    TikTok.
+  - `GOOGLE_CLIENT_ID`/`SECRET`, `TIKTOK_CLIENT_KEY`/`SECRET`, and `SNAPCHAT_CLIENT_ID`/`SECRET`
+    are all still `replace_me` placeholders — Google/YouTube and Snapchat are both self-serve
+    with no App Review wait, unlike TikTok, so either is a good next target.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -480,27 +530,47 @@ built on top of it.
 
 **Immediately in progress**: getting Instagram verification approved for real (non-tester)
 applicants — see the "In progress as of this writing" bullet under the Instagram setup checklist
-above for exact status (Business Verification via `admin@outroll.me`, `instagram_business_basic`
-added to App Review but not yet submitted, `/privacy` now exists and is linked in the app's
-Publish flow). Pick this up by returning to the Instagram app's dashboard
-(`developers.facebook.com/apps/1078180775160489/dashboard/`) and continuing the Publish flow.
+above for exact status. Checked live 2026-08-11: Business Verification is submitted and **"In
+review"** (Meta's ETA ~2 business days from submission — check
+`business.facebook.com/settings/security/?business_id=117968183604893` for the current status).
+App Review is **still "Not submitted"** — four permissions (`instagram_business_basic`,
+`instagram_business_manage_messages`, `instagram_manage_comments`, `public_profile`) are queued
+but need to actually be submitted, likely requiring a usage screencast per permission. Pick this
+up by returning to the Instagram app's dashboard
+(`developers.facebook.com/apps/2796525164063265/dashboard/` — note the corrected App ID, see
+above) and continuing the Publish flow once Business Verification clears.
+
+**Also this session (2026-08-11)**: curator login switched from username to email (username is
+still the public handle, just not the login credential — see `src/app/curator/login/`), and the
+platform list was narrowed to 5 (Instagram, Facebook Reels, YouTube Shorts, TikTok, Snapchat)
+with Twitter/X demoted to a "coming soon" placeholder and Threads/Twitch/SoundCloud/Spotify
+Playlist dropped — see the "Platform list narrowed" note near the top of this file and the new
+Snapchat bullet under "Social account verification" for the full reasoning (checked each
+platform's actual 2026 API access live before deciding, not from memory). Since every listable
+platform is now gated, the old manual/self-reported listing path and at-signup pricing form are
+both gone — listings are only ever created after connecting an account from the dashboard.
 
 Next priorities after that, in rough priority order:
 
 1. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
-2. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
+2. **Snapchat needs a real Snap Developer Portal app and a live end-to-end test** —
+   `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me` placeholders; the OAuth URL construction
+   was verified locally (redirects to the real Snapchat authorize endpoint with correct params)
+   but the full connect flow has never run against a real Snapchat account. Self-serve, no App
+   Review wait — a good quick win alongside Google/YouTube below.
+3. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
    deprecated `pages_show_list`/`pages_read_engagement` scopes. Lower priority since it's not
    part of the application flow, only post-signup listing verification — but worth its own fix
    (likely: does Facebook Reels have an equivalent "no Page required" modern API path the way
    Instagram did? Worth researching before assuming the old Pages approach is still correct.)
-3. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
+4. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
    placeholders) — Google is self-serve with no review wait, good next target.
-4. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
+5. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
-5. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
+6. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
    yet monitored or tested against.
-6. Then continue down the rest of both "Known simplifications" lists in priority order (no rate
+7. Then continue down the rest of both "Known simplifications" lists in priority order (no rate
    limiting, deadline sweep locking, curator username reservation, no disconnect/reconnect UI for
    social connections, no token refresh job, no periodic profile-photo refresh, etc.)

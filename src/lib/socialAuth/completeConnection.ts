@@ -11,6 +11,7 @@ const PROFILE_URL_BASE: Record<GatedPlatform, string> = {
   FACEBOOK_REELS: 'https://facebook.com/',
   TIKTOK: 'https://tiktok.com/@',
   YOUTUBE_SHORTS: 'https://youtube.com/@',
+  SNAPCHAT: 'https://snapchat.com/add/',
 };
 
 // Shared by all three callback routes. Always resolves to a redirect path -- never throws --
@@ -56,7 +57,7 @@ export async function completeConnection(
           platform,
           externalUserId: profile.externalUserId,
           externalHandle: profile.handle,
-          followerCount: profile.followerCount,
+          followerCount: profile.followerCount ?? null,
           accessToken,
           refreshToken,
           tokenExpiresAt,
@@ -64,7 +65,7 @@ export async function completeConnection(
         update: {
           externalUserId: profile.externalUserId,
           externalHandle: profile.handle,
-          followerCount: profile.followerCount,
+          followerCount: profile.followerCount ?? null,
           accessToken,
           refreshToken,
           tokenExpiresAt,
@@ -92,7 +93,11 @@ export async function completeConnection(
     await prisma.curatorApplication.update({
       where: { id: application.id },
       data: {
-        followerCount: profile.followerCount,
+        // CuratorApplication.followerCount is non-nullable — unreachable for Snapchat today
+        // since applications only ever verify via Instagram (see apply/page.tsx), but this
+        // dispatches generically over GatedPlatform, so fall back defensively rather than
+        // widen the schema for a case that can't actually occur.
+        followerCount: profile.followerCount ?? 0,
         profileUrl: profile.handle ? `${PROFILE_URL_BASE[platform]}${profile.handle}` : application.profileUrl,
         verifiedExternalUserId: profile.externalUserId,
         verifiedExternalHandle: profile.handle,

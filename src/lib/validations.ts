@@ -1,18 +1,11 @@
 import { z } from 'zod';
-import { GATED_PLATFORMS, isSecureAssetLink } from '@/lib/constants';
+import { isSecureAssetLink } from '@/lib/constants';
 
-export const platformEnum = z.enum([
-  'INSTAGRAM',
-  'TIKTOK',
-  'YOUTUBE_SHORTS',
-  'FACEBOOK_REELS',
-  'TWITTER_X',
-  'SNAPCHAT',
-  'THREADS',
-  'TWITCH',
-  'SOUNDCLOUD',
-  'SPOTIFY_PLAYLIST',
-]);
+// Mirrors PLATFORMS in @/lib/constants — the platforms curators can actually list on today.
+// Deliberately narrower than the full Prisma Platform enum (which still has TWITTER_X and a few
+// retired values for backward compatibility with existing rows) so the API rejects attempts to
+// create a listing on a platform that isn't offered, not just hides it from the UI.
+export const platformEnum = z.enum(['INSTAGRAM', 'TIKTOK', 'YOUTUBE_SHORTS', 'FACEBOOK_REELS', 'SNAPCHAT']);
 
 export const genreEnum = z.enum([
   'POP',
@@ -50,31 +43,14 @@ export const listingCreateSchema = z.object({
   priceCents: z.coerce.number().int().min(500, 'Minimum price is $5.00'),
 });
 
+// No `listings` field — every platform now requires OAuth verification (see GATED_PLATFORMS in
+// @/lib/constants), which needs an authenticated curator to exist first, so listings are only
+// ever created after signup from the dashboard's "Connect account" flow.
 export const curatorSignupSchema = z.object({
   token: z.string().min(1),
   username: z.string().min(3).max(24).regex(/^[a-z0-9_]+$/i),
   password: z.string().min(8),
   displayName: z.string().min(1).max(80),
-  listings: z
-    .array(
-      z.object({
-        platform: platformEnum,
-        priceCents: z.coerce.number().int().min(500, 'Minimum price is $5.00'),
-      })
-    )
-    .max(10)
-    .refine(
-      (listings) => new Set(listings.map((l) => l.platform)).size === listings.length,
-      'Each platform can only be listed once'
-    )
-    .refine(
-      // Verification requires an authenticated curator (for the OAuth state token), which
-      // doesn't exist yet at signup time — gated platforms must be connected afterward from
-      // the dashboard, see /api/curator/connections/[platform]/start.
-      (listings) => listings.every((l) => !(GATED_PLATFORMS as readonly string[]).includes(l.platform)),
-      'Instagram, Facebook Reels, TikTok, and YouTube Shorts require verification after signup'
-    )
-    .default([]),
 });
 
 export const pitchSchema = z.object({
@@ -93,8 +69,14 @@ export const checkoutSchema = z.object({
   pitches: z.array(pitchSchema).min(1, 'Add at least one curator to your campaign'),
 });
 
+// Admin login stays username-based — only curator login switched to email (2026-08-11).
 export const loginSchema = z.object({
   username: z.string().min(1),
+  password: z.string().min(1),
+});
+
+export const curatorLoginSchema = z.object({
+  email: z.string().email(),
   password: z.string().min(1),
 });
 

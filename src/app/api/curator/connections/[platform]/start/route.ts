@@ -4,8 +4,9 @@ import { platformForStartRoute, getAuthUrl } from '@/lib/socialAuth';
 import { createConnectState } from '@/lib/socialAuth/state';
 import { generateCodeVerifier } from '@/lib/socialAuth/pkce';
 
-// Kicks off the OAuth round trip for one of the four gated platforms. `params.platform` is a
-// route-friendly segment (e.g. "youtube_shorts"), not the Prisma enum value directly.
+// Kicks off the OAuth round trip for one of the gated platforms (see GATED_PLATFORMS in
+// @/lib/constants). `params.platform` is a route-friendly segment (e.g. "youtube_shorts"), not
+// the Prisma enum value directly.
 export async function GET(req: NextRequest, { params }: { params: { platform: string } }) {
   const session = await getCuratorSession();
   if (!session) {

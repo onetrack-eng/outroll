@@ -4,9 +4,9 @@ import { hashPassword, setCuratorSession } from '@/lib/auth';
 import { curatorSignupSchema } from '@/lib/validations';
 import { isGatedPlatform } from '@/lib/constants';
 
-// Completes curator signup after admin approval — sets a password, creates the login-able
-// Curator record, and (spec section 2: "set their own price" per platform) publishes any
-// platform/price rows the curator entered during signup as live listings immediately.
+// Completes curator signup after admin approval — sets a password and creates the login-able
+// Curator record. Listings themselves are created afterward from the dashboard, once each
+// platform is connected and verified (every platform is gated — see GATED_PLATFORMS).
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = curatorSignupSchema.safeParse(body);
@@ -14,7 +14,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' }, { status: 400 });
   }
 
-  const { token, username, password, displayName, listings } = parsed.data;
+  const { token, username, password, displayName } = parsed.data;
 
   const application = await prisma.curatorApplication.findUnique({ where: { signupToken: token } });
   if (!application || application.status !== 'APPROVED' || application.signupTokenUsed) {
@@ -56,16 +56,6 @@ export async function POST(req: NextRequest) {
       where: { id: application.id },
       data: { signupTokenUsed: true },
     });
-    if (listings.length > 0) {
-      await tx.listing.createMany({
-        data: listings.map((listing) => ({
-          curatorId: created.id,
-          platform: listing.platform,
-          genre: application.genre,
-          priceCents: listing.priceCents,
-        })),
-      });
-    }
 
     // Carry over an already-verified account from the application step so the curator isn't
     // asked to reconnect something they already proved ownership of during OAuth verification

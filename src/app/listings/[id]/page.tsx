@@ -20,8 +20,10 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
   const connection = await prisma.socialConnection.findUnique({
     where: { curatorId_platform: { curatorId: listing.curatorId, platform: listing.platform } },
   });
-  const followerCount = connection?.followerCount ?? listing.curator.followerCount;
   const verified = connection !== null;
+  // connection.followerCount is null for a verified-but-count-less platform (Snapchat) — show
+  // no number rather than falling back to the curator's unrelated self-reported count.
+  const followerCount = verified ? connection.followerCount : listing.curator.followerCount;
 
   return (
     <div className="mx-auto max-w-content px-6 py-16">
@@ -46,7 +48,9 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
             href={`/curators/${listing.curator.id}`}
             className="text-sm text-muted underline underline-offset-2 hover:text-ink"
           >
-            {followerCount.toLocaleString('en-US')} followers{verified ? ' (verified)' : ''} — view profile
+            {followerCount !== null && `${followerCount.toLocaleString('en-US')} followers`}
+            {followerCount !== null && verified && ' '}
+            {verified && '(verified)'} — view profile
           </Link>
 
           <div className="mt-10 text-4xl font-semibold tracking-tight text-ink">
