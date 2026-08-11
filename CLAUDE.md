@@ -518,6 +518,7 @@ platform later is a one-line change in that provider's module.
 | Curator application / Instagram-OAuth-to-apply flow | `src/app/apply/page.tsx`, `src/app/api/curator/apply/start-verification/route.ts`, `src/lib/socialAuth/completeConnection.ts`, `src/lib/socialAuth/state.ts` |
 | Which platforms/genres are offered | `PLATFORMS`, `GENRES`, `GATED_PLATFORMS` in `src/lib/constants.ts` |
 | Curator display photo | `src/components/ui/Avatar.tsx`, `Curator.profilePhotoUrl`, `instagram.ts`'s `toDataUrl()` |
+| Top nav (logged-in-curator state) | `src/components/Nav.tsx` (server component, reads the session) + `src/components/NavLinks.tsx` (client component, actual markup) |
 | Privacy policy | `src/app/privacy/page.tsx` (linked from `Footer.tsx`) |
 
 ## Suggested next session
