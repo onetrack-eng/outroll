@@ -267,10 +267,13 @@ the *application* step.
   `instagram_business_basic`, exchange the code at `https://api.instagram.com/oauth/access_token`,
   immediately upgrade to a 60-day long-lived token via
   `https://graph.instagram.com/access_token?grant_type=ig_exchange_token`, then read
-  `id,username,followers_count` from `https://graph.instagram.com/v22.0/me`. Verified against
-  the real endpoints (confirmed the old scopes are genuinely gone, confirmed the new authorize
-  URL is reachable and correctly redirects) — not yet verified end-to-end with a completed login,
-  since that requires the real `INSTAGRAM_CLIENT_ID`/`SECRET` setup below to be finished first.
+  `id,username,followers_count,profile_picture_url` from `https://graph.instagram.com/v22.0/me`.
+  **Verified fully end-to-end in production** with a real Instagram account and real
+  `INSTAGRAM_CLIENT_ID`/`SECRET`: real follower count captured (not self-reported), long-lived
+  token stored with a correct ~60-day expiry, and the profile photo downloaded successfully (see
+  the profile-photo feature below). Confirmed both through the pre-account `/apply` flow and the
+  post-signup dashboard "Connect" flow (re-authorized the same account, `SocialConnection`
+  correctly upserted rather than duplicated).
   **Facebook Reels was not touched by this fix** — `meta.ts` still targets the old
   `pages_show_list`/`pages_read_engagement` scopes via Facebook Login, which per this same
   finding are deprecated and won't actually work either. This is a known broken/unverified path
@@ -319,13 +322,37 @@ the *application* step.
     (confirmed via both the "Add more use cases" picker and a direct search in App Review →
     Permissions and Features — neither surfaces them). This app is only useful for Facebook
     Reels going forward, and even that needs a real fix, not just credentials.
-  - **Instagram**: still needs its own separate app + `INSTAGRAM_CLIENT_ID`/
-    `INSTAGRAM_CLIENT_SECRET` set up per the Instagram-specific checklist step above — not yet
-    done as of this writing. Once configured, verify with a real Tester account (Development
-    mode doesn't require App Review to test with accounts explicitly added as Testers).
+  - **Instagram**: fully configured and verified. Real `INSTAGRAM_CLIENT_ID`/
+    `INSTAGRAM_CLIENT_SECRET` are set in production, from a dedicated app (App ID
+    `1078180775160489`) created with **"Manage messaging & content on Instagram"** as its
+    primary use case at creation — not Facebook Login. This distinction mattered: an earlier
+    attempt created the app with Facebook Login as primary, and Meta's console then refused to
+    let Pages/Instagram use cases be added afterward at all ("Add more use cases" only ever
+    offered an unrelated Marketing API use case) — a real platform restriction, not a
+    misconfiguration, confirmed by trying it twice. Starting from the Instagram use case
+    directly avoided it entirely.
+  - **In progress as of this writing: getting Instagram verification approved for real (non-tester) applicants.** Status:
+    - The app is connected to a real Business Portfolio ("OneTrackMind").
+    - `/privacy` (this codebase, linked from the site footer) now exists as the required privacy
+      policy URL and has been entered in the app's Publish flow.
+    - `instagram_business_basic` has been added to App Review via the use case's Permissions
+      page → Actions → "Add to App Review" — not yet submitted/approved.
+    - Business Verification is in progress. It requires a working inbox at the business's email
+      domain; **`admin@outroll.me`** was set up via Namecheap Private Email (a paid product,
+      currently on its free trial) for this. Real gotcha hit here: the MX records
+      (`mx1.privateemail.com`/`mx2.privateemail.com`, priority 10) live in a separate "Mail
+      Settings" section of Namecheap's DNS panel, not the main host-records table where the
+      Vercel/Resend records were added — easy to miss. Also hit a transient false alarm: Google's
+      public DNS (8.8.8.8) returned a stale "no MX record" answer after the records were
+      genuinely already live and correct (confirmed via Cloudflare's 1.1.1.1 and the domain's own
+      authoritative nameserver) — don't trust a single resolver when debugging DNS here, check at
+      least two.
+    - Until App Review is approved and the app is published, Instagram verification only works
+      for accounts added as Testers under **App roles → Roles** (this is Meta's standard
+      Development-mode restriction, not specific to this app).
   - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still the `replace_me`
-    placeholders — start with Google/YouTube next since it's self-serve with no App Review wait,
-    unlike TikTok.
+    placeholders — Google/YouTube next since it's self-serve with no App Review wait, unlike
+    TikTok.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -342,6 +369,19 @@ the *application* step.
     finished verifying) — they just sit inert in Postgres forever. Not visible anywhere, not
     reviewable, essentially harmless; worth a sweep only if volume ever makes it worth caring
     about.
+
+**Curator display photos** (`Curator.profilePhotoUrl`): whichever gated platform a curator
+connects (most recently) — currently only Instagram actually populates one — has its profile
+photo downloaded and re-encoded as a `data:` URL, then shown as the `ListingCard` cover-art tile
+and as a small avatar on the curator/listing detail pages (`src/components/ui/Avatar.tsx`).
+Deliberately *not* storing the provider's own `profile_picture_url` directly — Meta documents
+that as a temporary, expiring signed CDN link, so it would eventually go blank. Verified live:
+reconnecting Instagram for an existing curator populated a real ~10KB JPEG data URL that
+rendered correctly. Known simplification: the photo is only ever downloaded once, at
+connect/reconnect time — no periodic refresh, so it'll reflect whatever the profile photo was
+*then*, not necessarily right now. Google/TikTok/Meta's `fetchProfile()` all explicitly return
+`profilePhotoDataUrl: undefined` rather than omitting the field, so extending this to another
+platform later is a one-line change in that provider's module.
 
 1. ~~**3D Secure / SCA is not handled.**~~ **Fixed.** Checkout confirmation moved client-side.
    `/api/checkout/confirm` now creates one manual-capture PaymentIntent per hold with
@@ -419,33 +459,48 @@ the *application* step.
 | Social account verification (OAuth) | `src/lib/socialAuth/`, `src/app/api/curator/connections/` |
 | Curator application / Instagram-OAuth-to-apply flow | `src/app/apply/page.tsx`, `src/app/api/curator/apply/start-verification/route.ts`, `src/lib/socialAuth/completeConnection.ts`, `src/lib/socialAuth/state.ts` |
 | Which platforms/genres are offered | `PLATFORMS`, `GENRES`, `GATED_PLATFORMS` in `src/lib/constants.ts` |
+| Curator display photo | `src/components/ui/Avatar.tsx`, `Curator.profilePhotoUrl`, `instagram.ts`'s `toDataUrl()` |
+| Privacy policy | `src/app/privacy/page.tsx` (linked from `Footer.tsx`) |
 
 ## Suggested next session
 
-Done already, in prior sessions: local dev environment fully set up (Node, Docker, Postgres,
-Stripe CLI all installed), `npm install`/`prisma generate`/`npm run build` all clean, admin
-seeded, and the apply → approve → curator signup → listing → browse → pitch submission →
-checkout-review portion of the happy path walked through live in the browser. Real Stripe
-test-mode keys are configured and Connect/Express onboarding is verified working end to end.
-**The entire money flow is now verified end to end**: artist checkout → manual-capture
-PaymentIntent → curator accept (immediate capture) → post → deadline sweep → real Transfer
-landing on the connected account — see "Stripe test-mode setup" above for exactly what was run
-and a bug that was found and fixed along the way (`Hold.stripeTransferId` wasn't being saved on
-payout).
+**This app is live in production** at `https://outroll.me` (Vercel project `one-track-dev/outroll`,
+GitHub repo `onetrack-eng/outroll`, Neon Postgres). The entire money flow (checkout → manual-capture
+PaymentIntent → curator accept → post → deadline sweep → real Transfer) is verified end to end
+against real Stripe test-mode keys — see "Stripe test-mode setup" above. 3D Secure, automated
+tests (36, all passing), and the Resend email integration are all done and verified live — see
+their respective sections above for exactly what was run.
 
-The happy path (checkout through payout) is fully exercised, tests exist (item 4, fixed), and
-3D Secure is handled and verified live against real Stripe test-mode keys — both success and
-failure paths, including the abort/cleanup path (item 1, fixed). See both items above for what
-was actually run.
+**The curator application flow was substantially reworked this session**: applying now requires
+connecting Instagram via OAuth (no self-reported follower count, no platform choice) — see
+"Social account verification" above for the full story, including a significant finding
+(`pages_show_list`/`pages_read_engagement`/`instagram_basic` are deprecated; rewrote against
+Meta's current "Instagram API with Instagram Login" instead) and a curator-display-photo feature
+built on top of it.
 
-Next priorities, from the "Known simplifications" list above:
+**Immediately in progress**: getting Instagram verification approved for real (non-tester)
+applicants — see the "In progress as of this writing" bullet under the Instagram setup checklist
+above for exact status (Business Verification via `admin@outroll.me`, `instagram_business_basic`
+added to App Review but not yet submitted, `/privacy` now exists and is linked in the app's
+Publish flow). Pick this up by returning to the Instagram app's dashboard
+(`developers.facebook.com/apps/1078180775160489/dashboard/`) and continuing the Publish flow.
 
-1. **Item 2's newly-added gap**: a browser tab closed mid-confirmation-loop (some holds
-   authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
-   retry/resume path and no visibility for the artist. Worth deciding whether that needs a
-   sweep of its own (e.g. a cron job that finds old Campaigns with no emailed dashboard link but
-   fully-authorized Holds and finalizes them) or just needs to happen rarely enough not to
-   matter for an MVP.
-2. **Item 3**: card-authorization-window vs. business-day-deadline drift — still just a
-   theoretical risk, not yet monitored or tested against.
-3. Then continue down the rest of the "Known simplifications" list (5–9) in priority order.
+Next priorities after that, in rough priority order:
+
+1. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
+   thing standing between "works for us" and "works for real applicants."
+2. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
+   deprecated `pages_show_list`/`pages_read_engagement` scopes. Lower priority since it's not
+   part of the application flow, only post-signup listing verification — but worth its own fix
+   (likely: does Facebook Reels have an equivalent "no Page required" modern API path the way
+   Instagram did? Worth researching before assuming the old Pages approach is still correct.)
+3. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
+   placeholders) — Google is self-serve with no review wait, good next target.
+4. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
+   (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
+   retry/resume path — needs a decision on whether a cleanup sweep is worth building.
+5. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
+   yet monitored or tested against.
+6. Then continue down the rest of both "Known simplifications" lists in priority order (no rate
+   limiting, deadline sweep locking, curator username reservation, no disconnect/reconnect UI for
+   social connections, no token refresh job, no periodic profile-photo refresh, etc.)
