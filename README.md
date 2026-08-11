@@ -1,4 +1,4 @@
-# Placement.fm
+# Outroll
 
 A two-sided marketplace connecting artists with independent music curators. See `CLAUDE.md`
 for the full product spec, architecture, and a punch list of what's left to build.

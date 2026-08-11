@@ -5,7 +5,7 @@ import { Footer } from '@/components/Footer';
 import { CartProvider } from '@/components/CartProvider';
 
 export const metadata: Metadata = {
-  title: 'Placement.fm — Music promotion, curated',
+  title: 'Outroll — Music promotion, curated',
   description:
     'Connect with independent music curators across Instagram, TikTok, YouTube Shorts, Twitter/X, Snapchat, and more.',
 };

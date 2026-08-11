@@ -27,7 +27,7 @@ export default async function CuratorOnboardingPage() {
           )}
         </div>
         <p className="mb-6 text-sm text-muted">
-          Placement.fm uses Stripe Connect to pay you out. You&rsquo;ll link a bank account on
+          Outroll uses Stripe Connect to pay you out. You&rsquo;ll link a bank account on
           Stripe&rsquo;s secure onboarding flow — we never see your bank details directly.
         </p>
         <StartOnboardingButton

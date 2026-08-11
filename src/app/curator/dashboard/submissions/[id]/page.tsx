@@ -96,7 +96,7 @@ export default async function SubmissionDetailPage({ params }: { params: { id: s
       {hold.status === 'DISPUTED' && hold.dispute && (
         <Card>
           <p className="text-sm text-danger">
-            The artist filed a dispute on {dateFmt.format(hold.dispute.filedAt)}. Placement.fm is
+            The artist filed a dispute on {dateFmt.format(hold.dispute.filedAt)}. Outroll is
             reviewing and will issue a binary resolution.
           </p>
         </Card>

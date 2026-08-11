@@ -1,4 +1,4 @@
-# CLAUDE.md — Placement.fm
+# CLAUDE.md — Outroll
 
 This file is for whichever Claude Code session picks this project up next. It carries the
 product spec, the architecture decisions made while scaffolding, and — most importantly — an
@@ -35,7 +35,9 @@ part that took the real thought and should mostly survive as-is.
 
 ## Product spec (Draft v2 — source of truth for behavior)
 
-**Placement.fm** is a two-sided marketplace connecting artists with independent music curators
+**Outroll** (product name changed from the original "Placement.fm" scaffold — see git history
+for anything still referencing the old name) is a two-sided marketplace connecting artists with
+independent music curators
 across a wide set of platforms (see `src/lib/constants.ts` — `PLATFORMS`; expanded past the
 original four during a later session, no longer just Instagram/TikTok/YouTube Shorts/Facebook
 Reels). Curators list paid promotion slots; artists browse, submit pitches with assets, and pay

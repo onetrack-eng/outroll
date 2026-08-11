@@ -2,14 +2,14 @@ import { Resend } from 'resend';
 
 const apiKey = process.env.RESEND_API_KEY || undefined;
 const resend = new Resend(apiKey ?? 're_placeholder');
-const FROM = process.env.EMAIL_FROM ?? 'Placement.fm <notifications@placement.fm>';
+const FROM = process.env.EMAIL_FROM ?? 'Outroll <notifications@outroll.me>';
 
 // Minimal, restrained HTML shell — matches the "Apple Store, not ad-tech" tone from spec
 // section 7. Every email in this file goes through this one wrapper for consistency.
 function shell(heading: string, bodyHtml: string, cta?: { label: string; url: string }) {
   return `
   <div style="font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:40px 24px;color:#111;">
-    <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#6b6b6b;margin-bottom:24px;">Placement.fm</div>
+    <div style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;color:#6b6b6b;margin-bottom:24px;">Outroll</div>
     <h1 style="font-size:20px;font-weight:600;margin:0 0 16px;">${heading}</h1>
     <div style="font-size:15px;line-height:1.6;color:#333;">${bodyHtml}</div>
     ${
@@ -17,7 +17,7 @@ function shell(heading: string, bodyHtml: string, cta?: { label: string; url: st
         ? `<a href="${cta.url}" style="display:inline-block;margin-top:28px;padding:12px 24px;background:#111;color:#fff;text-decoration:none;border-radius:6px;font-size:14px;">${cta.label}</a>`
         : ''
     }
-    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e5e5e5;font-size:12px;color:#999;">Placement.fm</div>
+    <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e5e5e5;font-size:12px;color:#999;">Outroll</div>
   </div>`;
 }
 
@@ -34,7 +34,7 @@ async function send(to: string, subject: string, html: string) {
 export async function sendMagicLinkEmail(to: string, url: string, curatorCount: number) {
   await send(
     to,
-    'Your Placement.fm campaign',
+    'Your Outroll campaign',
     shell(
       'Your campaign is live',
       `<p>Your submission${curatorCount > 1 ? 's have' : ' has'} gone out to ${curatorCount} curator${curatorCount > 1 ? 's' : ''}. This link is your dashboard — no account or password needed. Bookmark it to track status, and to file a dispute if something goes wrong after a post goes live.</p>`,
@@ -91,7 +91,7 @@ export async function sendDisputeOutcomeEmail(
 export async function sendCuratorApplicationApproved(to: string, signupUrl: string) {
   await send(
     to,
-    "You're approved on Placement.fm",
+    "You're approved on Outroll",
     shell(
       "You're in",
       `<p>Your curator application has been approved. Set up your login and connect payouts to start receiving submissions.</p>`,
@@ -103,10 +103,10 @@ export async function sendCuratorApplicationApproved(to: string, signupUrl: stri
 export async function sendCuratorApplicationDeclined(to: string) {
   await send(
     to,
-    'Your Placement.fm application',
+    'Your Outroll application',
     shell(
       'Application update',
-      `<p>Thanks for applying to Placement.fm. We won't be moving forward with your application at this time.</p>`
+      `<p>Thanks for applying to Outroll. We won't be moving forward with your application at this time.</p>`
     )
   );
 }
@@ -118,7 +118,7 @@ export async function sendCuratorNewSubmissionEmail(
 ) {
   await send(
     to,
-    'New submission on Placement.fm',
+    'New submission on Outroll',
     shell(
       'New pitch waiting on you',
       `<p>${artistLabel} submitted a pitch for one of your listings. You have 7 business days to accept or decline.</p>`,
@@ -150,7 +150,7 @@ export async function sendCuratorDisputeResolvedEmail(
 export async function sendCuratorDisputeFiledEmail(to: string, dashboardUrl: string) {
   await send(
     to,
-    'A dispute was filed on Placement.fm',
+    'A dispute was filed on Outroll',
     shell(
       'Dispute filed',
       `<p>An artist has disputed a post on one of your holds. The payout for this hold is paused while we review — no action is needed from you right now.</p>`,
