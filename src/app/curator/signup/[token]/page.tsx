@@ -40,8 +40,8 @@ export default function CuratorSignupPage({ params }: { params: { token: string 
     <div className="mx-auto max-w-sm px-6 py-20">
       <h1 className="mb-2 text-2xl font-semibold tracking-tight">Finish your signup</h1>
       <p className="mb-8 text-sm text-muted">
-        Choose a username and password. Once you're in, connect and verify each platform you
-        want to list from your dashboard.
+        Choose a username and password. Once you&rsquo;re in, connect and verify each platform
+        you want to list from your dashboard.
       </p>
       <Card>
         <form onSubmit={onSubmit} className="space-y-4">
