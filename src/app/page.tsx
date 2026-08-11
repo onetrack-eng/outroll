@@ -27,7 +27,7 @@ const STEPS = [
 export default async function HomePage() {
   const previewListings = await prisma.listing.findMany({
     where: { isPaused: false },
-    include: { curator: { select: { id: true, displayName: true } } },
+    include: { curator: { select: { id: true, displayName: true, profilePhotoUrl: true } } },
     orderBy: { createdAt: 'desc' },
     take: 4,
   });
@@ -63,11 +63,24 @@ export default async function HomePage() {
               >
                 <div
                   className="flex aspect-square items-center justify-center transition-transform group-hover:scale-105"
-                  style={{ background: gradientForSeed(`${listing.curator.id}:${listing.platform}`) }}
+                  style={
+                    listing.curator.profilePhotoUrl
+                      ? undefined
+                      : { background: gradientForSeed(`${listing.curator.id}:${listing.platform}`) }
+                  }
                 >
-                  <span className="text-4xl font-semibold text-white/30">
-                    {listing.curator.displayName.charAt(0).toUpperCase()}
-                  </span>
+                  {listing.curator.profilePhotoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- stored as a data URL, not a remote src
+                    <img
+                      src={listing.curator.profilePhotoUrl}
+                      alt={listing.curator.displayName}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-4xl font-semibold text-white/30">
+                      {listing.curator.displayName.charAt(0).toUpperCase()}
+                    </span>
+                  )}
                 </div>
                 <div className="p-3">
                   <div className="truncate text-sm font-medium text-ink">
