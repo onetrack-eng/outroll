@@ -70,6 +70,14 @@ export async function completeConnection(
           tokenExpiresAt,
         },
       });
+      // Whichever gated platform the curator connects (most recently) becomes their display
+      // photo — see Curator.profilePhotoUrl. Only set when the provider actually returned one.
+      if (profile.profilePhotoDataUrl) {
+        await prisma.curator.update({
+          where: { id: state.curatorId },
+          data: { profilePhotoUrl: profile.profilePhotoDataUrl },
+        });
+      }
       return `/curator/dashboard/listings?connected=${platform}`;
     }
 
@@ -91,6 +99,7 @@ export async function completeConnection(
         verifiedAccessToken: accessToken,
         verifiedRefreshToken: refreshToken,
         verifiedTokenExpiresAt: tokenExpiresAt,
+        verifiedProfilePhotoDataUrl: profile.profilePhotoDataUrl,
         oauthPending: false,
       },
     });

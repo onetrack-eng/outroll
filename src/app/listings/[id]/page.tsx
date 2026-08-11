@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { Avatar } from '@/components/ui/Avatar';
 import { AddToCampaignForm } from '@/components/AddToCampaignForm';
 import { formatCents, platformLabel, genreLabel } from '@/lib/constants';
 import Link from 'next/link';
@@ -30,9 +31,17 @@ export default async function ListingDetailPage({ params }: { params: { id: stri
             <Badge>{platformLabel(listing.platform)}</Badge>
             <Badge tone="neutral">{genreLabel(listing.genre)}</Badge>
           </div>
-          <h1 className="mb-2 text-3xl font-semibold tracking-tight text-ink">
-            {listing.curator.displayName}
-          </h1>
+          <div className="mb-2 flex items-center gap-3">
+            <Avatar
+              photoUrl={listing.curator.profilePhotoUrl}
+              seed={listing.curator.id}
+              name={listing.curator.displayName}
+              size={44}
+            />
+            <h1 className="text-3xl font-semibold tracking-tight text-ink">
+              {listing.curator.displayName}
+            </h1>
+          </div>
           <Link
             href={`/curators/${listing.curator.id}`}
             className="text-sm text-muted underline underline-offset-2 hover:text-ink"

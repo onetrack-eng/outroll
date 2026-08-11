@@ -71,9 +71,25 @@ export async function exchangeCode(code: string) {
   };
 }
 
+// Instagram's profile_picture_url is a temporary, signed CDN link (documented to expire, not a
+// stable address) — downloaded and re-encoded as a data URL immediately so the curator's
+// display photo doesn't silently go blank later. A failed download shouldn't block verification
+// (the follower count matters far more), so this never throws.
+async function toDataUrl(imageUrl: string): Promise<string | undefined> {
+  try {
+    const res = await fetch(imageUrl);
+    if (!res.ok) return undefined;
+    const contentType = res.headers.get('content-type') ?? 'image/jpeg';
+    const buffer = Buffer.from(await res.arrayBuffer());
+    return `data:${contentType};base64,${buffer.toString('base64')}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function fetchProfile(accessToken: string) {
   const params = new URLSearchParams({
-    fields: 'id,username,followers_count',
+    fields: 'id,username,followers_count,profile_picture_url',
     access_token: accessToken,
   });
   const res = await fetch(`${GRAPH_BASE}/me?${params.toString()}`);
@@ -81,9 +97,13 @@ export async function fetchProfile(accessToken: string) {
     throw new Error(`Instagram profile lookup failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
+  const profilePhotoDataUrl = data.profile_picture_url
+    ? await toDataUrl(data.profile_picture_url as string)
+    : undefined;
   return {
     externalUserId: data.id as string,
     handle: data.username as string | undefined,
     followerCount: Number(data.followers_count ?? 0),
+    profilePhotoDataUrl,
   };
 }

@@ -48,6 +48,7 @@ export async function POST(req: NextRequest) {
         genre: application.genre,
         followerCount,
         profileUrl,
+        profilePhotoUrl: application.verifiedProfilePhotoDataUrl,
         applicationId: application.id,
       },
     });

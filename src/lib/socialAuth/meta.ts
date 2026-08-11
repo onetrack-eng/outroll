@@ -75,5 +75,7 @@ export async function fetchProfile(accessToken: string) {
     externalUserId: page.id,
     handle: page.name,
     followerCount: Number(page.followers_count ?? 0),
+    // Only Instagram's fetchProfile downloads a display photo today — see instagram.ts.
+    profilePhotoDataUrl: undefined as string | undefined,
   };
 }

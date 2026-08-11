@@ -96,6 +96,10 @@ model CuratorApplication {
   verifiedAccessToken    String?   @db.Text
   verifiedRefreshToken   String?   @db.Text
   verifiedTokenExpiresAt DateTime?
+  // Downloaded and stored as a data URL at verification time (see instagram.ts) rather than
+  // keeping the provider's own photo URL -- those are temporary, expiring CDN links, not a
+  // stable address. Carried over to Curator.profilePhotoUrl at signup.
+  verifiedProfilePhotoDataUrl String? @db.Text
 
   // One-time signup link issued on approval; consumed once the curator sets a password.
   signupToken     String?  @unique
@@ -117,6 +121,10 @@ model Curator {
   genre       Genre
   followerCount Int
   profileUrl  String
+  // A data URL (downloaded at OAuth-connect time, not the provider's own photo URL -- those
+  // expire, see CuratorApplication.verifiedProfilePhotoDataUrl). Whichever gated platform the
+  // curator connects most recently overwrites this -- see completeConnection.ts.
+  profilePhotoUrl String? @db.Text
 
   stripeAccountId          String?
   stripeOnboardingComplete Boolean @default(false)

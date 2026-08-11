@@ -19,7 +19,7 @@ export default async function BrowsePage({
       ...(genre ? { genre: genre as any } : {}),
     },
     include: {
-      curator: { select: { id: true, displayName: true, followerCount: true } },
+      curator: { select: { id: true, displayName: true, followerCount: true, profilePhotoUrl: true } },
     },
     orderBy: { priceCents: sort === 'desc' ? 'desc' : 'asc' },
   });
