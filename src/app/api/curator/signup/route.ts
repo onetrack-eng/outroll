@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { hashPassword, setCuratorSession } from '@/lib/auth';
 import { curatorSignupSchema } from '@/lib/validations';
+import { isGatedPlatform } from '@/lib/constants';
 
 // Completes curator signup after admin approval — sets a password, creates the login-able
 // Curator record, and (spec section 2: "set their own price" per platform) publishes any
@@ -25,6 +26,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'That username is already taken.' }, { status: 409 });
   }
 
+  // Only ever null while oauthPending (mid-verification) -- an approved, non-pending
+  // application always has these filled in (self-reported at creation, or OAuth-verified by
+  // completeConnection.ts). This should be unreachable; it's a defensive guard, not expected
+  // user-facing behavior.
+  if (application.followerCount == null || application.profileUrl == null) {
+    return NextResponse.json({ error: 'This application is missing required data. Contact support.' }, { status: 409 });
+  }
+  const { followerCount, profileUrl } = application;
+
   const passwordHash = await hashPassword(password);
 
   const curator = await prisma.$transaction(async (tx) => {
@@ -36,8 +46,8 @@ export async function POST(req: NextRequest) {
         displayName,
         platform: application.platform,
         genre: application.genre,
-        followerCount: application.followerCount,
-        profileUrl: application.profileUrl,
+        followerCount,
+        profileUrl,
         applicationId: application.id,
       },
     });
@@ -55,6 +65,25 @@ export async function POST(req: NextRequest) {
         })),
       });
     }
+
+    // Carry over an already-verified account from the application step so the curator isn't
+    // asked to reconnect something they already proved ownership of during OAuth verification
+    // (see completeConnection.ts) — they land on their dashboard already "Connected" for it.
+    if (application.verifiedExternalUserId && isGatedPlatform(application.platform)) {
+      await tx.socialConnection.create({
+        data: {
+          curatorId: created.id,
+          platform: application.platform,
+          externalUserId: application.verifiedExternalUserId,
+          externalHandle: application.verifiedExternalHandle,
+          followerCount,
+          accessToken: application.verifiedAccessToken!,
+          refreshToken: application.verifiedRefreshToken,
+          tokenExpiresAt: application.verifiedTokenExpiresAt,
+        },
+      });
+    }
+
     return created;
   });
 

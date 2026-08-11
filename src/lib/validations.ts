@@ -33,13 +33,14 @@ export const genreEnum = z.enum([
   'OTHER',
 ]);
 
-export const curatorApplicationSchema = z.object({
+// Every curator application requires connecting Instagram via OAuth — no self-reported
+// follower count, no platform choice (see /apply and start-verification/route.ts). Follower
+// count and profile URL are deliberately absent here; they only ever come from the verified
+// Instagram profile once OAuth completes (see completeConnection.ts), never from user input.
+export const applicationDraftSchema = z.object({
   email: z.string().email(),
   proposedUsername: z.string().min(3).max(24).regex(/^[a-z0-9_]+$/i, 'Letters, numbers, underscores only'),
-  platform: platformEnum,
   genre: genreEnum,
-  followerCount: z.coerce.number().int().min(0),
-  profileUrl: z.string().url(),
   message: z.string().min(20).max(2000),
 });
 

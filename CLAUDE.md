@@ -51,12 +51,14 @@ campaign of one or many curators in one checkout, customize a pitch per curator 
 folder link + narrative), get a no-login magic-link dashboard emailed after checkout, can file
 one dispute per hold within a week of it going live, cannot cancel a submission once made.
 
-**Curators** — apply via public form, manually and subjectively approved. Approved curators get
-a signup link, set username/password, and — for platforms with a real follower-count API
-(Instagram, Facebook Reels, TikTok, YouTube Shorts; see "Social account verification" below) —
+**Curators** — apply via public form, manually and subjectively approved. Applying requires
+connecting Instagram via OAuth (no self-reported follower count, no platform choice at
+application time — see "Social account verification" below); the verified follower count comes
+from that connection. Approved curators get a signup link and set username/password. For the
+other platforms with a real follower-count API (Facebook Reels, TikTok, YouTube Shorts) —
 must connect that account via OAuth before listing on it, which also fills in a live, verified
-follower count instead of a self-reported one. The other platforms stay self-reported. Curators
-also onboard via Stripe Connect Express. They set their own price per platform; platform adds
+follower count instead of a self-reported one. The remaining platforms stay self-reported.
+Curators also onboard via Stripe Connect Express. They set their own price per platform; platform adds
 20% on top. Listings show price/genre/platform/follower count (linked to profile). Curators can
 pause a listing without deleting it, and can keep accepting new submissions on an active listing
 even with an unresolved dispute elsewhere — a dispute freezes *only* that one hold. 7 business
@@ -199,14 +201,46 @@ platforms with a real, reachable follower-count API, listing requires connecting
 via OAuth first — see `GATED_PLATFORMS` in `src/lib/constants.ts`. The other 6 platforms
 (Twitter/X, Snapchat, Threads, Twitch, SoundCloud, Spotify Playlist) don't have a realistic
 API path (paid tier, closed developer registration, or no creator-stats endpoint at all) and
-stay self-reported.
+stay self-reported — but only for *listings*, added after signup; see below for what changed at
+the *application* step.
 
-- **Flow**: curator clicks "Connect" on `/curator/dashboard/listings` →
-  `/api/curator/connections/[platform]/start` (signs a short-lived state JWT, redirects to the
-  provider) → curator authorizes on the provider's site → provider redirects to that provider's
-  fixed callback route → `completeConnection()` exchanges the code, fetches the verified
-  profile, and upserts a `SocialConnection` row (`curatorId` + `platform` unique). Listing
-  creation (`POST /api/curator/listings`) checks for that row before allowing a gated platform.
+- **Applying now requires connecting Instagram — no exceptions, no self-reported follower
+  count, no platform choice.** `/apply` collects just email/username/genre/message, then sends
+  the applicant through Instagram's OAuth dialog before a real application ever exists. This is
+  a deliberate product decision (every applicant is verified up front now, not just the ones
+  choosing a gated platform), not a technical default — the four-platform `GATED_PLATFORMS`
+  distinction above still governs *listings* after signup, where a curator can still add
+  self-reported platforms too.
+- **Pre-account OAuth flow**: since applying happens before any `Curator` row exists, this
+  reuses the same OAuth plumbing built for the curator dashboard's "Connect" button but keyed by
+  a draft application id instead of an authenticated `curatorId` — see the `ConnectState`
+  discriminated union in `src/lib/socialAuth/state.ts` (`kind: 'curator'` vs.
+  `kind: 'application'`). `POST /api/curator/apply/start-verification` creates a
+  `CuratorApplication` row with `oauthPending: true` and `followerCount`/`profileUrl` both
+  `null`, then redirects into Instagram's real OAuth dialog. `completeConnection()` (shared with
+  the dashboard flow) branches on `state.kind`: for `'application'`, it fills in the draft's
+  verified follower count/handle instead of upserting a `SocialConnection` (no Curator to attach
+  one to yet), flips `oauthPending` to `false`, and redirects to `/apply?submitted=1`.
+  `completeConnection()` never throws — it always resolves to a redirect path, defaulting the
+  error target to `/apply` vs. `/curator/dashboard/listings` based on whichever `kind` it
+  managed to determine before failing, so a callback error always lands the visitor somewhere
+  sensible with an explanation.
+- **`oauthPending` keeps abandoned drafts invisible to admin**: `AdminApplicationsPage` filters
+  `WHERE oauthPending = false`, so someone who starts connecting Instagram and never finishes
+  (denies permission, closes the tab) just leaves an inert draft row behind — never reviewable,
+  never counted as a real application. No cleanup job for these exists yet; low priority at
+  current volume, but worth a cron sweep if abandoned drafts ever pile up.
+- **Verified account carries over at signup**: if `application.verifiedExternalUserId` is set,
+  `/api/curator/signup` also creates the curator's Instagram `SocialConnection` directly from
+  the application's stored verified data (tokens included), so they land on their dashboard
+  already "Connected" instead of being asked to verify Instagram a second time.
+- **Flow** (dashboard "Connect" button, post-signup): curator clicks "Connect" on
+  `/curator/dashboard/listings` → `/api/curator/connections/[platform]/start` (signs a
+  short-lived state JWT, redirects to the provider) → curator authorizes on the provider's site
+  → provider redirects to that provider's fixed callback route → `completeConnection()`
+  exchanges the code, fetches the verified profile, and upserts a `SocialConnection` row
+  (`curatorId` + `platform` unique). Listing creation (`POST /api/curator/listings`) checks for
+  that row before allowing a gated platform.
 - **One Meta app covers two platforms** (Instagram + Facebook Reels) — same OAuth app, same
   callback route (`/api/curator/connections/meta/callback`), disambiguated by which platform was
   encoded into the state token when the flow started. Google and TikTok each have their own
@@ -236,11 +270,20 @@ stay self-reported.
     redirect URI `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` →
     `META_CLIENT_ID`/`META_CLIENT_SECRET`.
   - All three need a **real public HTTPS domain** for the redirect URI before submitting for
-    review — this app isn't deployed yet (see "Deploying" in README.md), so that has to happen
-    first.
+    review — the app is now live at `https://outroll.me` (see "Stripe test-mode setup" and the
+    deploy history above), so that requirement is satisfied. `GOOGLE_CLIENT_ID`/`SECRET`,
+    `TIKTOK_CLIENT_KEY`/`SECRET`, and `META_CLIENT_ID`/`SECRET` are still the `replace_me`
+    placeholders as of this writing — the app-level flow (draft creation, state signing,
+    redirect into the real provider dialog, error handling) has been verified working end-to-end
+    against the real Meta OAuth endpoint locally (fails at "Invalid App ID" exactly as expected
+    with a placeholder client id), but no real account has ever completed the round trip. That's
+    the next thing to verify once real credentials are in place — start with Google/YouTube
+    since it's self-serve with no App Review wait, unlike TikTok and Meta.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
-  - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` — no
-    encryption at rest. Fine for a low-traffic MVP; revisit before scale.
+  - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
+    transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
+    approved application awaits signup) — no encryption at rest. Fine for a low-traffic MVP;
+    revisit before scale.
   - No token refresh job — if a long-lived token expires, the connection silently goes stale
     until the curator reconnects. Nothing currently detects or surfaces that.
   - Meta lookup always takes the curator's *first* Facebook Page (`firstPage()` in
@@ -248,6 +291,10 @@ stay self-reported.
     one a listing represents.
   - No disconnect/reconnect UI — once connected, there's no way for a curator to unlink an
     account from the dashboard (would need a direct DB delete today).
+  - No cleanup job for abandoned application drafts (`oauthPending: true` rows nobody ever
+    finished verifying) — they just sit inert in Postgres forever. Not visible anywhere, not
+    reviewable, essentially harmless; worth a sweep only if volume ever makes it worth caring
+    about.
 
 1. ~~**3D Secure / SCA is not handled.**~~ **Fixed.** Checkout confirmation moved client-side.
    `/api/checkout/confirm` now creates one manual-capture PaymentIntent per hold with
@@ -323,6 +370,7 @@ stay self-reported.
 | Auto-decline / auto-refund / auto-payout | `src/lib/deadlineSweep.ts`, `src/app/api/cron/deadlines/route.ts` |
 | Data model | `prisma/schema.prisma` |
 | Social account verification (OAuth) | `src/lib/socialAuth/`, `src/app/api/curator/connections/` |
+| Curator application / Instagram-OAuth-to-apply flow | `src/app/apply/page.tsx`, `src/app/api/curator/apply/start-verification/route.ts`, `src/lib/socialAuth/completeConnection.ts`, `src/lib/socialAuth/state.ts` |
 | Which platforms/genres are offered | `PLATFORMS`, `GENRES`, `GATED_PLATFORMS` in `src/lib/constants.ts` |
 
 ## Suggested next session

@@ -18,6 +18,6 @@ export async function GET(req: NextRequest, { params }: { params: { platform: st
   }
 
   const codeVerifier = generateCodeVerifier();
-  const state = await createConnectState(session.sub, platform, codeVerifier);
+  const state = await createConnectState({ kind: 'curator', curatorId: session.sub, platform, codeVerifier });
   return NextResponse.redirect(getAuthUrl(platform, state, codeVerifier));
 }

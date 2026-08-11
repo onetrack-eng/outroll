@@ -13,8 +13,11 @@ export default async function AdminApplicationsPage() {
   const session = await getAdminSession();
   if (!session) redirect('/admin/login');
 
+  // oauthPending: false excludes gated-platform applications still mid-OAuth-verification (or
+  // abandoned partway through) — see start-verification/route.ts and completeConnection.ts.
+  // followerCount/profileUrl are guaranteed non-null once that's false.
   const applications = await prisma.curatorApplication.findMany({
-    where: { status: 'PENDING' },
+    where: { status: 'PENDING', oauthPending: false },
     orderBy: { createdAt: 'asc' },
   });
 
@@ -33,15 +36,18 @@ export default async function AdminApplicationsPage() {
                 <Badge>{platformLabel(app.platform)}</Badge>
                 <Badge tone="neutral">{genreLabel(app.genre)}</Badge>
                 <span className="text-sm text-muted">
-                  {app.followerCount.toLocaleString('en-US')} followers
+                  {(app.followerCount ?? 0).toLocaleString('en-US')} followers
                 </span>
+                {app.verifiedExternalUserId && <Badge tone="success">Verified via OAuth</Badge>}
               </div>
               <div className="mb-1 font-medium text-ink">
                 @{app.proposedUsername} · {app.email}
               </div>
-              <a href={app.profileUrl} target="_blank" rel="noreferrer" className="mb-3 block text-sm text-ink underline">
-                {app.profileUrl}
-              </a>
+              {app.profileUrl && (
+                <a href={app.profileUrl} target="_blank" rel="noreferrer" className="mb-3 block text-sm text-ink underline">
+                  {app.profileUrl}
+                </a>
+              )}
               <p className="mb-4 whitespace-pre-wrap text-sm text-muted">{app.message}</p>
               <AdminApplicationActions applicationId={app.id} />
             </Card>

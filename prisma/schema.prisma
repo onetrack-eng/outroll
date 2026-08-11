@@ -72,10 +72,31 @@ model CuratorApplication {
   proposedUsername String
   platform      Platform
   genre         Genre
-  followerCount Int
-  profileUrl    String
+  // Null while a gated-platform application is still mid-OAuth-verification (oauthPending:
+  // true) -- always populated by the time an application can be reviewed. For gated platforms
+  // these come from the verified provider profile, never from user input; see
+  // completeConnection.ts and start-verification/route.ts.
+  followerCount Int?
+  profileUrl    String?
   message       String            @db.Text
   status        ApplicationStatus @default(PENDING)
+
+  // True from the moment a gated-platform application kicks off the OAuth round trip until the
+  // callback verifies the account. Applications can't be reviewed while this is true (see
+  // AdminApplicationsPage) -- prevents an abandoned/incomplete OAuth attempt from ever reaching
+  // admin with fabricated follower data.
+  oauthPending Boolean @default(false)
+
+  // Populated by the OAuth callback for gated-platform applications only (see
+  // completeConnection.ts). Carried over into a real SocialConnection row when the curator
+  // signs up after approval (see /api/curator/signup) so they aren't asked to reconnect an
+  // account they already proved ownership of during application.
+  verifiedExternalUserId String?
+  verifiedExternalHandle String?
+  verifiedAccessToken    String?   @db.Text
+  verifiedRefreshToken   String?   @db.Text
+  verifiedTokenExpiresAt DateTime?
+
   // One-time signup link issued on approval; consumed once the curator sets a password.
   signupToken     String?  @unique
   signupTokenUsed Boolean  @default(false)
