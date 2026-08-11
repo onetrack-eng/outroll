@@ -12,10 +12,10 @@ export default function PrivacyPage() {
         <section>
           <h2 className="mb-2 text-base font-semibold text-ink">Overview</h2>
           <p>
-            Outroll (&ldquo;we,&rdquo; &ldquo;us&rdquo;) operates outroll.me, a marketplace
-            connecting artists with independent music curators. This policy explains what
-            information we collect from artists and curators who use the site, why we collect
-            it, and how it&rsquo;s handled.
+            Outroll is operated by OneTrack Media Inc. (&ldquo;we,&rdquo; &ldquo;us&rdquo;) at
+            outroll.me, a marketplace connecting artists with independent music curators. This
+            policy explains what information we collect from artists and curators who use the
+            site, why we collect it, and how it&rsquo;s handled.
           </p>
         </section>
 
