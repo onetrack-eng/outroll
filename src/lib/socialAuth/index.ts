@@ -2,13 +2,17 @@ import type { GatedPlatform } from '@/lib/constants';
 import * as google from './google';
 import * as tiktok from './tiktok';
 import * as meta from './meta';
+import * as instagram from './instagram';
 
-type Provider = 'google' | 'tiktok' | 'meta';
+type Provider = 'google' | 'tiktok' | 'meta' | 'instagram';
 
+// INSTAGRAM uses its own dedicated 'instagram' provider (Instagram API with Instagram Login —
+// see instagram.ts for why), not the shared Meta/Facebook Login app that FACEBOOK_REELS still
+// uses. They used to share one provider before Meta deprecated the scopes that made that work.
 export const PROVIDER_FOR_PLATFORM: Record<GatedPlatform, Provider> = {
   YOUTUBE_SHORTS: 'google',
   TIKTOK: 'tiktok',
-  INSTAGRAM: 'meta',
+  INSTAGRAM: 'instagram',
   FACEBOOK_REELS: 'meta',
 };
 
@@ -30,7 +34,7 @@ export function platformForStartRoute(segment: string): GatedPlatform | null {
   return ROUTE_SEGMENT_TO_PLATFORM[segment] ?? null;
 }
 
-// codeVerifier is only used by the TikTok branch (PKCE); Google and Meta ignore it.
+// codeVerifier is only used by the TikTok branch (PKCE); Google, Meta, and Instagram ignore it.
 export function getAuthUrl(platform: GatedPlatform, state: string, codeVerifier: string): string {
   switch (PROVIDER_FOR_PLATFORM[platform]) {
     case 'google':
@@ -39,6 +43,8 @@ export function getAuthUrl(platform: GatedPlatform, state: string, codeVerifier:
       return tiktok.getAuthUrl(state, codeVerifier);
     case 'meta':
       return meta.getAuthUrl(state);
+    case 'instagram':
+      return instagram.getAuthUrl(state);
   }
 }
 
@@ -50,6 +56,8 @@ export function exchangeCode(platform: GatedPlatform, code: string, codeVerifier
       return tiktok.exchangeCode(code, codeVerifier);
     case 'meta':
       return meta.exchangeCode(code);
+    case 'instagram':
+      return instagram.exchangeCode(code);
   }
 }
 
@@ -60,6 +68,8 @@ export function fetchProfile(platform: GatedPlatform, accessToken: string) {
     case 'tiktok':
       return tiktok.fetchProfile(accessToken);
     case 'meta':
-      return meta.fetchProfile(accessToken, platform);
+      return meta.fetchProfile(accessToken);
+    case 'instagram':
+      return instagram.fetchProfile(accessToken);
   }
 }

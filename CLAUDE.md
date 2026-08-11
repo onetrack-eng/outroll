@@ -241,15 +241,42 @@ the *application* step.
   exchanges the code, fetches the verified profile, and upserts a `SocialConnection` row
   (`curatorId` + `platform` unique). Listing creation (`POST /api/curator/listings`) checks for
   that row before allowing a gated platform.
-- **One Meta app covers two platforms** (Instagram + Facebook Reels) — same OAuth app, same
-  callback route (`/api/curator/connections/meta/callback`), disambiguated by which platform was
-  encoded into the state token when the flow started. Google and TikTok each have their own
-  1:1 callback route because their redirect URI has to be pre-registered exactly.
+- **Instagram and Facebook Reels are now two separate provider apps, not one** (this changed
+  from the original design — see the dated finding below). Instagram uses its own dedicated
+  callback route (`/api/curator/connections/instagram/callback`, `src/lib/socialAuth/instagram.ts`);
+  Facebook Reels keeps the old shared-Meta-app callback (`/api/curator/connections/meta/callback`,
+  `src/lib/socialAuth/meta.ts`). Google and TikTok each have their own 1:1 callback route too,
+  because their redirect URI has to be pre-registered exactly.
 - **TikTok requires PKCE** (`code_challenge`/`code_verifier`) even for a confidential
   server-side client — found by testing against TikTok's real authorize endpoint, which
   rejects requests missing it. The verifier is generated in the `/start` route and carried
   through inside the signed state token (`src/lib/socialAuth/state.ts`) since it has to survive
   the redirect round trip.
+- **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
+  deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
+  original build's Dec 2024 "Basic Display API killed" note was already aware something had
+  changed here, but not that these specific replacement scopes would later be deprecated too).
+  Discovered live: they don't appear in App Review's permission picker, and no Meta "use case"
+  that bundles them is addable to an app once Facebook Login has been chosen as the app's
+  primary use case (confirmed by creating a real app and hitting this directly — not a
+  configuration mistake, a real platform change). Meta's current replacement for Instagram is a
+  parallel product called **"Instagram API with Instagram Login"**, which — bonus — doesn't
+  require a linked Facebook Page at all, so it's a strictly simpler integration than what this
+  app originally used. `src/lib/socialAuth/instagram.ts` was rewritten against this: authorize
+  at `https://www.instagram.com/oauth/authorize` (not `facebook.com`) with scope
+  `instagram_business_basic`, exchange the code at `https://api.instagram.com/oauth/access_token`,
+  immediately upgrade to a 60-day long-lived token via
+  `https://graph.instagram.com/access_token?grant_type=ig_exchange_token`, then read
+  `id,username,followers_count` from `https://graph.instagram.com/v22.0/me`. Verified against
+  the real endpoints (confirmed the old scopes are genuinely gone, confirmed the new authorize
+  URL is reachable and correctly redirects) — not yet verified end-to-end with a completed login,
+  since that requires the real `INSTAGRAM_CLIENT_ID`/`SECRET` setup below to be finished first.
+  **Facebook Reels was not touched by this fix** — `meta.ts` still targets the old
+  `pages_show_list`/`pages_read_engagement` scopes via Facebook Login, which per this same
+  finding are deprecated and won't actually work either. This is a known broken/unverified path
+  now, not just "untested" — worth its own fix later, lower priority since Facebook Reels isn't
+  part of the curator application flow (only Instagram is — see below), just post-signup listing
+  verification.
 - **Setup checklist per provider** (none of this can be done on your behalf — each needs your
   own developer account):
   - **Google (YouTube)** — self-serve. Create a Google Cloud project → OAuth consent screen →
@@ -261,24 +288,44 @@ the *application* step.
     real privacy policy, live domain) before scopes work for non-test users → redirect URI
     `{NEXT_PUBLIC_APP_URL}/api/curator/connections/tiktok/callback` →
     `TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET`.
-  - **Meta (Instagram + Facebook Reels)** — Meta Developer account → create an app → add
-    Facebook Login → request `pages_show_list`, `pages_read_engagement`, `instagram_basic` →
-    App Review + Business Verification required to go from Development to Live mode (real
-    business documents, a hosted privacy policy, a screencast of the exact permission usage) →
-    the curator's Instagram must be a Business/Creator account linked to a Facebook Page (Meta
-    killed personal-account follower access with the old Basic Display API in Dec 2024) →
-    redirect URI `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` →
+  - **Instagram** — Meta Developer account → create an app (any type; a Business-portfolio
+    connection isn't required to reach this screen, though you'll need one eventually for App
+    Review) → in the app's left sidebar, **Instagram → API setup with Instagram Login** (not
+    the generic "Use cases → Facebook Login" flow, which does not offer Instagram/Pages
+    permissions at all as of this writing) → add the `instagram_business_basic` scope → redirect
+    URI `{NEXT_PUBLIC_APP_URL}/api/curator/connections/instagram/callback` → copy the
+    **Instagram App ID/Secret** shown on that same page (distinct from the app's main/Facebook
+    Login App ID) into `.env` as `INSTAGRAM_CLIENT_ID`/`INSTAGRAM_CLIENT_SECRET` → for testing
+    before App Review, add your own account under **App roles → Roles** as a Tester (must be a
+    Business/Creator Instagram account) and accept the invite while logged in as that account.
+  - **Meta / Facebook Reels** — separate from Instagram above (see the deprecation finding) —
+    Meta Developer account → create an app → add Facebook Login → request `pages_show_list`,
+    `pages_read_engagement` → **these are deprecated and this will not actually work**; this
+    checklist step is preserved for whoever picks up fixing Facebook Reels verification, not
+    because it's expected to succeed today → App Review + Business Verification required to go
+    from Development to Live mode (real business documents, a hosted privacy policy, a
+    screencast of the exact permission usage) → redirect URI
+    `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` →
     `META_CLIENT_ID`/`META_CLIENT_SECRET`.
-  - All three need a **real public HTTPS domain** for the redirect URI before submitting for
+  - All providers need a **real public HTTPS domain** for the redirect URI before submitting for
     review — the app is now live at `https://outroll.me` (see "Stripe test-mode setup" and the
-    deploy history above), so that requirement is satisfied. `GOOGLE_CLIENT_ID`/`SECRET`,
-    `TIKTOK_CLIENT_KEY`/`SECRET`, and `META_CLIENT_ID`/`SECRET` are still the `replace_me`
-    placeholders as of this writing — the app-level flow (draft creation, state signing,
-    redirect into the real provider dialog, error handling) has been verified working end-to-end
-    against the real Meta OAuth endpoint locally (fails at "Invalid App ID" exactly as expected
-    with a placeholder client id), but no real account has ever completed the round trip. That's
-    the next thing to verify once real credentials are in place — start with Google/YouTube
-    since it's self-serve with no App Review wait, unlike TikTok and Meta.
+    deploy history above), so that requirement is satisfied.
+  - **Meta/Facebook Reels app**: a real `META_CLIENT_ID`/`META_CLIENT_SECRET` pair is configured
+    in production (app created via Meta's "Use cases → Facebook Login" flow, category "Business
+    and pages", connected to a real Business Portfolio). The redirect round trip itself works —
+    verified live against `outroll.me`, reaching Facebook's real login screen with the correct
+    `redirect_uri`. But per the deprecation finding above, `pages_show_list`/
+    `pages_read_engagement` themselves don't work: they're not addable to this app at all
+    (confirmed via both the "Add more use cases" picker and a direct search in App Review →
+    Permissions and Features — neither surfaces them). This app is only useful for Facebook
+    Reels going forward, and even that needs a real fix, not just credentials.
+  - **Instagram**: still needs its own separate app + `INSTAGRAM_CLIENT_ID`/
+    `INSTAGRAM_CLIENT_SECRET` set up per the Instagram-specific checklist step above — not yet
+    done as of this writing. Once configured, verify with a real Tester account (Development
+    mode doesn't require App Review to test with accounts explicitly added as Testers).
+  - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still the `replace_me`
+    placeholders — start with Google/YouTube next since it's self-serve with no App Review wait,
+    unlike TikTok.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
