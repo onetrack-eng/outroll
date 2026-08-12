@@ -598,16 +598,37 @@ both gone — listings are only ever created after connecting an account from th
 
 Next priorities after that, in rough priority order:
 
-1. **Next.js is pinned to 14.2.13, which `npm audit` (run 2026-08-11, while installing Sentry)
-   flags as CRITICAL** — a long list of real advisories accumulated since this version:
-   authorization bypass in Middleware, SSRF via Middleware redirects, cache poisoning, several
-   DoS vectors, XSS in App Router with CSP nonces, and more. This predates this session — it's
-   been pinned since the original scaffold and never upgraded, just never surfaced until an
-   audit was actually run. Given this app moves real money, this is arguably more urgent than
-   the Meta App Review item below. Needs a real upgrade (check the Next.js 14→15 or latest-14.x
-   patch changelog for breaking changes first — this project uses the App Router, Server
-   Actions, and Edge middleware, all areas that changed across Next versions) and a full
-   regression pass (checkout, curator OAuth flows, admin) before trusting it in production.
+1. **Next.js was pinned to 14.2.13 (CRITICAL per npm audit) — patched to 14.2.35 same day.**
+   `npm audit` (run 2026-08-11, while installing Sentry) flagged a long list of real advisories:
+   authorization bypass in Middleware (CVE-2025-29927, the critical one), SSRF via Middleware
+   redirects, cache poisoning, several DoS vectors, XSS in App Router with CSP nonces, and more.
+   This predates this session — it had been pinned since the original scaffold and never
+   upgraded, just never surfaced until an audit was actually run.
+   - **14.2.35 is `next-14`'s final-ever release** — Next.js 14 reached End of Life on
+     2025-10-26, and 14.2.35 (shipped 2025-12-11) was its last security patch. It does fix the
+     critical Middleware bypass and a few others, but the 14.x line will never receive fixes for
+     anything discovered from here on. Bumping to it was a pure patch-version change (zero
+     breaking changes, confirmed: `npm run build` compiled clean, all 36 tests passed, and a
+     manual regression pass — homepage, a listing detail page, the curator dashboard with an
+     active session, admin login — showed no errors).
+   - **`npm audit` still shows 5 "high" findings against `next` after the bump** — but most
+     don't actually apply to how this app is built: this codebase has zero `next/image` usage,
+     no WebSockets, no i18n config, no rewrites, and (checked directly) zero React Server
+     Actions (`'use server'` isn't used anywhere — every form submission goes through a plain
+     `fetch('/api/...')` route handler instead), which rules out several of the listed
+     advisories outright. What's left that's genuinely relevant to this app's real surface: RSC
+     cache poisoning/DoS and Middleware-redirect cache poisoning — real, but lower severity in
+     practice at this app's current traffic than the fixed critical bypass was.
+   - **Fully clearing `npm audit` requires Next.js 15**, which is not a drop-in bump — Next 15
+     makes route `params`/`searchParams` async (`Promise<{...}>` instead of a plain object),
+     which touches **17 files** in this codebase that currently destructure `params: { ... }`
+     directly (page components and route handlers under `[id]`/`[token]`/`[platform]` dynamic
+     segments — e.g. `dashboard/[token]/page.tsx`, every `submissions/[id]/*` route,
+     `curator/listings/[id]/route.ts`, etc.). That's a real, invasive change across
+     money-flow-adjacent code, not something to fold into a quick patch bump — it needs its own
+     dedicated pass and full regression test before trusting it against a live payments app.
+     Deliberately not attempted in this session; flagged here as the next real step if clearing
+     `npm audit` completely (rather than just the critical item) becomes the priority.
 2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
 3. **Snapchat needs a real Snap Developer Portal app and a live end-to-end test** —
