@@ -1,7 +1,27 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/components/CartProvider';
+
+function CuratorLogoutButton() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+
+  async function logOut() {
+    setLoading(true);
+    await fetch('/api/curator/logout', { method: 'POST' });
+    router.push('/');
+    router.refresh();
+  }
+
+  return (
+    <button type="button" onClick={logOut} disabled={loading} className="hover:text-ink disabled:opacity-50">
+      Log out
+    </button>
+  );
+}
 
 export function NavLinks({ isCuratorLoggedIn }: { isCuratorLoggedIn: boolean }) {
   const { items } = useCart();
@@ -17,9 +37,12 @@ export function NavLinks({ isCuratorLoggedIn }: { isCuratorLoggedIn: boolean }) 
             Browse
           </Link>
           {isCuratorLoggedIn ? (
-            <Link href="/curator/dashboard" className="hover:text-ink">
-              My dashboard
-            </Link>
+            <>
+              <Link href="/curator/dashboard" className="hover:text-ink">
+                My dashboard
+              </Link>
+              <CuratorLogoutButton />
+            </>
           ) : (
             <>
               <Link href="/apply" className="hover:text-ink">
