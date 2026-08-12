@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
+    "@sentry/nextjs": "^10.70.0",
     "@stripe/react-stripe-js": "^2.9.0",
     "@stripe/stripe-js": "^4.7.0",
     "bcryptjs": "^2.4.3",
@@ -56,6 +57,7 @@
     "@prisma/engines@5.22.0": true,
     "esbuild@0.28.1": true,
     "prisma@5.22.0": true,
-    "unrs-resolver@1.12.2": true
+    "unrs-resolver@1.12.2": true,
+    "@sentry/cli@2.58.6": true
   }
 }

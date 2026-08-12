@@ -156,6 +156,23 @@ transfers to their connected account once payout conditions are met. USD only fo
   hits the DB until `/api/checkout/confirm`, which creates the Campaign + Holds + PaymentIntents
   in one go and unwinds everything (cancels PIs, deletes rows) if any PaymentIntent fails
   partway through.
+- **Sentry (error monitoring), added 2026-08-11** — `@sentry/nextjs`. `src/instrumentation.ts`
+  covers server + edge runtimes (Sentry's current recommended pattern — replaces the older
+  `sentry.server.config.ts`/`sentry.edge.config.ts` files, which now print a deprecation warning
+  at build time if present); `sentry.client.config.ts` covers the browser and is *deliberately
+  not* migrated to the newer `instrumentation-client.ts` convention, since that requires
+  Turbopack and this project builds with Webpack (`next build` with no `--turbo` flag) — it
+  still works correctly here, just prints a forward-looking deprecation notice. `src/app/global-
+  error.tsx` catches errors that escape every nested `error.tsx` boundary. `next.config.mjs` is
+  wrapped with `withSentryConfig` for source-map upload, which only activates when
+  `SENTRY_AUTH_TOKEN` is set — without it the build just skips the upload with a warning, so
+  this is safe to have wrapped unconditionally. Every init call reads
+  `NEXT_PUBLIC_SENTRY_DSN` and self-disables gracefully when it's unset (local dev today).
+  **`NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` are still
+  `replace_me` placeholders** — needs a real Sentry project (sentry.io, free tier is enough at
+  this volume) before it actually reports anything. Verified locally: `npm run build` compiles
+  clean with the wrapper in place and self-disables with no DSN configured; not yet verified
+  against a real Sentry project since one doesn't exist yet.
 
 ## Stripe test-mode setup (verified working)
 
@@ -581,25 +598,39 @@ both gone — listings are only ever created after connecting an account from th
 
 Next priorities after that, in rough priority order:
 
-1. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
+1. **Next.js is pinned to 14.2.13, which `npm audit` (run 2026-08-11, while installing Sentry)
+   flags as CRITICAL** — a long list of real advisories accumulated since this version:
+   authorization bypass in Middleware, SSRF via Middleware redirects, cache poisoning, several
+   DoS vectors, XSS in App Router with CSP nonces, and more. This predates this session — it's
+   been pinned since the original scaffold and never upgraded, just never surfaced until an
+   audit was actually run. Given this app moves real money, this is arguably more urgent than
+   the Meta App Review item below. Needs a real upgrade (check the Next.js 14→15 or latest-14.x
+   patch changelog for breaking changes first — this project uses the App Router, Server
+   Actions, and Edge middleware, all areas that changed across Next versions) and a full
+   regression pass (checkout, curator OAuth flows, admin) before trusting it in production.
+2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
-2. **Snapchat needs a real Snap Developer Portal app and a live end-to-end test** —
+3. **Snapchat needs a real Snap Developer Portal app and a live end-to-end test** —
    `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me` placeholders; the OAuth URL construction
    was verified locally (redirects to the real Snapchat authorize endpoint with correct params)
    but the full connect flow has never run against a real Snapchat account. Self-serve, no App
    Review wait — a good quick win alongside Google/YouTube below.
-3. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
+4. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
    deprecated `pages_show_list`/`pages_read_engagement` scopes. Lower priority since it's not
    part of the application flow, only post-signup listing verification — but worth its own fix
    (likely: does Facebook Reels have an equivalent "no Page required" modern API path the way
    Instagram did? Worth researching before assuming the old Pages approach is still correct.)
-4. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
+5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
+   `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
+   Quick to finish: sign up at sentry.io, create a Next.js project, paste the DSN in.
+6. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
    placeholders) — Google is self-serve with no review wait, good next target.
-5. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
+7. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
-6. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
+8. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
    yet monitored or tested against.
-7. Then continue down the rest of both "Known simplifications" lists in priority order (no rate
-   limiting, deadline sweep locking, curator username reservation, no disconnect/reconnect UI for
-   social connections, no token refresh job, no periodic profile-photo refresh, etc.)
+9. **No rate limiting or bot protection anywhere** — the public application form, checkout, and
+   dispute-filing routes are all wide open. Fine at current volume, not fine at scale.
+10. Then continue down the rest of both "Known simplifications" lists in priority order (curator
+    username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
