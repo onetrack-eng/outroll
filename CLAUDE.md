@@ -411,22 +411,30 @@ what's always been true at the *application* step.
     offered an unrelated Marketing API use case) — a real platform restriction, not a
     misconfiguration, confirmed by trying it twice. Starting from the Instagram use case
     directly avoided it entirely.
-  - **In progress as of this writing: getting Instagram verification approved for real (non-tester) applicants.** Status (checked live against the Meta dashboard on 2026-08-11):
+  - **In progress as of this writing: getting Instagram verification approved for real (non-tester) applicants.** Status (checked live against the Meta dashboard on 2026-08-12):
     - The app is connected to a real Business Portfolio ("OneTrackMind").
-    - `/privacy` (this codebase, linked from the site footer) now exists as the required privacy
-      policy URL and has been entered in the app's Publish flow.
-    - **Business Verification: submitted, status "In review"** under legal entity "OneTrack Media
-      Inc." (`business.facebook.com/settings/security/?business_id=117968183604893`). Meta's own
-      estimate is ~2 business days from submission. Not yet approved as of 2026-08-11 — check back.
-    - **App Review: still "Not submitted."** Four permissions are queued under "New requests" on
-      the App Review page (`developers.facebook.com/apps/2796525164063265/app-review/`) —
-      `instagram_business_basic`, `instagram_business_manage_messages`, `instagram_manage_comments`,
-      and `public_profile` — each shows "In 1 use case," but none have actually been submitted for
-      review yet. Submitting requires stepping through Meta's request flow per permission (usage
-      justification, and typically a screencast demonstrating the exact usage) — not done yet.
-    - Business Verification is in progress. It requires a working inbox at the business's email
-      domain; **`admin@outroll.me`** was set up via Namecheap Private Email (a paid product,
-      currently on its free trial) for this. Real gotcha hit here: the MX records
+    - `/privacy`, `/terms`, and `/data-deletion` (all in this codebase, linked from the site
+      footer) exist for the app's Publish flow / App Review requirements.
+    - **Business Verification: `Verified`** as of 2026-08-12 (was rejected once — Meta couldn't
+      find the legal business name, "OneTrack Media Inc.," anywhere on the site; fixed by adding
+      it to the footer and the privacy policy's Overview section — see the 2026-08-11 commit —
+      then it cleared on its own without needing a manual resubmit click).
+    - **App Review: still "Not submitted," and the app is currently flagged "ineligible for
+      submission."** Four permissions are queued (`instagram_business_basic`,
+      `instagram_business_manage_messages`, `instagram_manage_comments`, `public_profile`), but
+      Meta's own checklist (`developers.facebook.com/apps/2796525164063265/settings/basic/`)
+      lists missing required fields before submission is even possible: **app icon (1024×1024)**,
+      **category**, **display name/namespace**, **app domains**, **contact email**, and — found
+      2026-08-12 — a **Platform** (e.g. Website) must be added under Settings → Basic before the
+      "Reviewer instructions" step will even accept input at all ("No requests to see... you'll
+      need to specify platforms for this app" is the exact blocking message). None of this can be
+      done on your behalf — icon upload, category choice, and adding the platform are all direct
+      console actions. Once unblocked, "Reviewer instructions" will also likely need step-by-step
+      access instructions (and probably a screencast) for Meta's reviewers, per the standard App
+      Review flow — not yet attempted.
+    - Business Verification required a working inbox at the business's email domain;
+      **`admin@outroll.me`** was set up via Namecheap Private Email (a paid product, currently on
+      its free trial) for this. Real gotcha hit here: the MX records
       (`mx1.privateemail.com`/`mx2.privateemail.com`, priority 10) live in a separate "Mail
       Settings" section of Namecheap's DNS panel, not the main host-records table where the
       Vercel/Resend records were added — easy to miss. Also hit a transient false alarm: Google's
@@ -436,7 +444,9 @@ what's always been true at the *application* step.
       least two.
     - Until App Review is approved and the app is published, Instagram verification only works
       for accounts added as Testers under **App roles → Roles** (this is Meta's standard
-      Development-mode restriction, not specific to this app).
+      Development-mode restriction, not specific to this app) — confirmed 2026-08-11 that
+      `@onetrack` is already an accepted (not just invited) Instagram Tester, so real-account
+      testing works today even though public App Review hasn't landed.
   - `GOOGLE_CLIENT_ID`/`SECRET`, `TIKTOK_CLIENT_KEY`/`SECRET`, and `SNAPCHAT_CLIENT_ID`/`SECRET`
     are all still `replace_me` placeholders — Google/YouTube and Snapchat are both self-serve
     with no App Review wait, unlike TikTok, so either is a good next target.
@@ -556,7 +566,7 @@ platform later is a one-line change in that provider's module.
 | Which platforms/genres are offered | `PLATFORMS`, `GENRES`, `GATED_PLATFORMS` in `src/lib/constants.ts` |
 | Curator display photo | `src/components/ui/Avatar.tsx`, `Curator.profilePhotoUrl`, `instagram.ts`'s `toDataUrl()` |
 | Top nav (logged-in-curator state) | `src/components/Nav.tsx` (server component, reads the session) + `src/components/NavLinks.tsx` (client component, actual markup) |
-| Privacy policy | `src/app/privacy/page.tsx` (linked from `Footer.tsx`) |
+| Legal pages (privacy/terms/data deletion) | `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/app/data-deletion/page.tsx` (all linked from `Footer.tsx`) — the latter two exist specifically to satisfy Meta App Review's required-URL checklist |
 
 ## Suggested next session
 
@@ -576,15 +586,16 @@ built on top of it.
 
 **Immediately in progress**: getting Instagram verification approved for real (non-tester)
 applicants — see the "In progress as of this writing" bullet under the Instagram setup checklist
-above for exact status. Checked live 2026-08-11: Business Verification is submitted and **"In
-review"** (Meta's ETA ~2 business days from submission — check
-`business.facebook.com/settings/security/?business_id=117968183604893` for the current status).
-App Review is **still "Not submitted"** — four permissions (`instagram_business_basic`,
-`instagram_business_manage_messages`, `instagram_manage_comments`, `public_profile`) are queued
-but need to actually be submitted, likely requiring a usage screencast per permission. Pick this
-up by returning to the Instagram app's dashboard
-(`developers.facebook.com/apps/2796525164063265/dashboard/` — note the corrected App ID, see
-above) and continuing the Publish flow once Business Verification clears.
+above for exact status. **Business Verification cleared 2026-08-12** (`Verified`, legal entity
+"OneTrack Media Inc."). App Review is **still "Not submitted," and the app is currently flagged
+"ineligible for submission"** — Meta's own checklist wants an app icon, category, display
+name/namespace, app domains, contact email, and (found 2026-08-12) a Platform added under
+Settings → Basic before the Reviewer Instructions step will even accept input. `/terms` and
+`/data-deletion` were added this session so those two required URLs are ready to paste in;
+`/privacy` already existed. Pick this up at
+`developers.facebook.com/apps/2796525164063265/settings/basic/` — the missing fields there are
+all direct console actions (icon upload, category dropdown, add platform) that need your
+account, not something codeable.
 
 **Also this session (2026-08-11)**: curator login switched from username to email (username is
 still the public handle, just not the login credential — see `src/app/curator/login/`), and the
