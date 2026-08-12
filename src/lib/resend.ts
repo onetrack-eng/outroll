@@ -147,6 +147,18 @@ export async function sendCuratorDisputeResolvedEmail(
   await send(to, heading, shell(heading, body));
 }
 
+export async function sendCuratorPasswordResetEmail(to: string, url: string) {
+  await send(
+    to,
+    'Reset your Outroll password',
+    shell(
+      'Reset your password',
+      `<p>We got a request to reset the password on your Outroll curator account. This link expires in 1 hour and can only be used once. If you didn't request this, you can safely ignore this email.</p>`,
+      { label: 'Reset password', url }
+    )
+  );
+}
+
 export async function sendCuratorDisputeFiledEmail(to: string, dashboardUrl: string) {
   await send(
     to,

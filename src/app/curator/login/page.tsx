@@ -57,7 +57,14 @@ function CuratorLoginForm() {
             />
           </div>
           <div>
-            <Label htmlFor="password">Password</Label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label htmlFor="password" className="text-xs font-medium uppercase tracking-wide text-muted">
+                Password
+              </label>
+              <a href="/curator/forgot-password" className="text-xs text-muted underline hover:text-ink">
+                Forgot password?
+              </a>
+            </div>
             <Input
               id="password"
               type="password"

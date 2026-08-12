@@ -133,6 +133,18 @@ transfers to their connected account once payout conditions are met. USD only fo
   for every subsequent status-update email, not just the first one. See the comment in
   `src/lib/magicLink.ts` if this looks like a security smell — it's a deliberate trade-off, not
   an oversight.
+  - **Curator "forgot password" flow, added 2026-08-11** (`src/lib/passwordReset.ts`,
+    `src/app/api/curator/{forgot,reset}-password/`, `src/app/curator/forgot-password/`,
+    `src/app/curator/reset-password/[token]/`). Unlike the artist magic link above, this token
+    *is* single-use and short-lived (1 hour) — `Curator.passwordResetToken`/
+    `passwordResetTokenExpiresAt`, cleared back to null the moment it's redeemed, so a
+    reused/leaked link fails immediately rather than staying valid for the rest of its window.
+    `/api/curator/forgot-password` always responds `{ ok: true }` regardless of whether the
+    email matches a curator, to avoid leaking which emails are registered. Resetting logs the
+    curator in immediately (same pattern as signup) rather than bouncing them back to the login
+    form. Verified locally end-to-end: requested a reset, pulled the token straight from
+    Postgres (no email provider configured locally), reset the password, landed on the
+    dashboard already logged in, then confirmed reusing the same link fails with a clear error.
 - **`src/lib/session.ts` vs `src/lib/auth.ts`**: session.ts is Edge-safe (JWT sign/verify only,
   no `next/headers`, no bcrypt) because `middleware.ts` runs on the Edge runtime and can't use
   `next/headers`. auth.ts wraps it with cookie read/write + password hashing for use in route

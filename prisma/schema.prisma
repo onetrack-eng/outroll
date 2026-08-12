@@ -129,6 +129,12 @@ model Curator {
   stripeAccountId          String?
   stripeOnboardingComplete Boolean @default(false)
 
+  // "Forgot password" flow (src/app/api/curator/forgot-password, reset-password). Single-use,
+  // short-lived (1 hour) -- unlike Campaign.magicLinkToken, this is cleared (set back to null)
+  // the moment it's redeemed, so a stale/leaked link stops working immediately after use.
+  passwordResetToken          String?   @unique
+  passwordResetTokenExpiresAt DateTime?
+
   applicationId String              @unique
   application   CuratorApplication  @relation(fields: [applicationId], references: [id])
 
