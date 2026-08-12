@@ -421,8 +421,15 @@ what's always been true at the *application* step.
   - Meta lookup always takes the curator's *first* Facebook Page (`firstPage()` in
     `src/lib/socialAuth/meta.ts`) — a curator managing multiple Pages has no way to pick which
     one a listing represents.
-  - No disconnect/reconnect UI — once connected, there's no way for a curator to unlink an
-    account from the dashboard (would need a direct DB delete today).
+  - ~~No disconnect/reconnect UI~~ **Fixed 2026-08-11.** `DELETE
+    /api/curator/connections/[platform]/route.ts` + `src/components/DisconnectButton.tsx` — a
+    "Disconnect" button now sits next to each verified platform on the dashboard (handles the
+    exact scenario a curator raised: a connected profile getting banned). Deletes the
+    `SocialConnection` and auto-pauses (never deletes) any listing on that platform, since it's
+    no longer backed by a verified connection; reconnecting doesn't auto-resume the listing, so
+    the curator can review price/details before going live again. Verified locally: disconnecting
+    Instagram flipped its listing to `Paused` while an unrelated Snapchat listing stayed
+    untouched.
   - No cleanup job for abandoned application drafts (`oauthPending: true` rows nobody ever
     finished verifying) — they just sit inert in Postgres forever. Not visible anywhere, not
     reviewable, essentially harmless; worth a sweep only if volume ever makes it worth caring

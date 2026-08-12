@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { GatedListingForm } from '@/components/GatedListingForm';
 import { ListingRow } from '@/components/ListingRow';
+import { DisconnectButton } from '@/components/DisconnectButton';
 import {
   platformLabel,
   GATED_PLATFORMS,
@@ -85,11 +86,17 @@ export default async function CuratorListingsPage({
                   )}
                 </div>
                 {connection ? (
-                  listedGatedPlatforms.has(platform) ? (
-                    <Badge tone="neutral">Listed</Badge>
-                  ) : (
-                    <GatedListingForm platform={platform} />
-                  )
+                  <div className="flex items-center gap-3">
+                    {listedGatedPlatforms.has(platform) ? (
+                      <Badge tone="neutral">Listed</Badge>
+                    ) : (
+                      <GatedListingForm platform={platform} />
+                    )}
+                    <DisconnectButton
+                      routeSegment={START_ROUTE_SEGMENT[platform]}
+                      hasListing={listedGatedPlatforms.has(platform)}
+                    />
+                  </div>
                 ) : (
                   <a
                     href={`/api/curator/connections/${START_ROUTE_SEGMENT[platform]}/start`}
