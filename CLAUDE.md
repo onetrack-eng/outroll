@@ -321,8 +321,8 @@ what's always been true at the *application* step.
   listing detail page, and anchors can't nest) — the clickable profile link only appears once you
   land on `/listings/[id]` or the curator's own dashboard. Bitmoji avatar is downloaded and re-encoded as a
   data URL for the profile photo, same pattern as Instagram's `toDataUrl()`.
-  **App registered 2026-08-14, not yet verified end-to-end against a real Snapchat account** —
-  a real Snap Kit app ("Outroll") was created in the `onetrack` organization at the Snap
+  **App registered 2026-08-14, verified working end-to-end against Staging — not yet live in
+  Production.** A real Snap Kit app ("Outroll") was created in the `onetrack` organization at the Snap
   Developer Portal (app ID `f43c0dc3-f1e8-4c04-b43b-e0efeb92da55`), with Login Kit enabled,
   the `Display Name` permission checked (the portal's current UI only exposes `Display Name`/
   `Bitmoji Avatar`/`Story Studio API` as togglable permissions — `user.external_id` isn't a
@@ -351,7 +351,22 @@ what's always been true at the *application* step.
     round trip — redirected back to `/curator/dashboard/listings?connected=SNAPCHAT` with a
     "Snapchat connected and verified." banner, and the Snapchat row switched from "Connect" to
     `@onetrack · Verified` with genre/price fields and a "List it" button, same as every other
-    connected platform. **Verified fully end-to-end against a real Snapchat account.**
+    connected platform. **Verified fully end-to-end — against Staging, not Production.**
+  - **Not yet live on `outroll.me` — this is real remaining work, not just a formality.** Snap Kit
+    separates Staging and Production entirely, each with its own Client ID/Secret pair (visible
+    on the Setup tab as "Active on: Staging" vs. "Live in: Production"). Everything verified
+    above used the **Staging** Confidential Client ID/Secret, saved only to the local `.env` —
+    the deployed site's Vercel environment variables still have whatever `SNAPCHAT_CLIENT_ID`/
+    `SNAPCHAT_CLIENT_SECRET` were set before (likely still `replace_me`). The Setup tab shows
+    **Production Version: "No Approved Versions"** — a Production Confidential Client ID hasn't
+    even been generated yet (the "Generate" button is still unclicked), and per Snap's own docs,
+    a Production client ID only authorizes *any* Snapchat user after the app version passes App
+    Review; before that it's restricted the same way Staging is (only Demo Users, e.g.
+    `onetrackm`). Same shape as the Instagram Tester-only restriction elsewhere in this file, just
+    Snap's review queue instead of Meta's. **To actually go live**: generate the Production
+    Confidential Client ID/Secret, set them as `SNAPCHAT_CLIENT_ID`/`SNAPCHAT_CLIENT_SECRET` in
+    Vercel's production environment (not local `.env`), and submit the app version for Snap App
+    Review via the "Submit For Review" button on the Initial Version page.
 - **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
   deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
   original build's Dec 2024 "Basic Display API killed" note was already aware something had
@@ -477,8 +492,9 @@ what's always been true at the *application* step.
       testing works today even though public App Review hasn't landed.
   - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still `replace_me`
     placeholders — Google/YouTube is self-serve with no App Review wait, unlike TikTok, so it's
-    a good next target. Snapchat is fully configured and verified end-to-end against a real
-    account (see the Snapchat bullet above) — done.
+    a good next target. Snapchat's OAuth mechanics are verified against Staging (see the Snapchat
+    bullet above) but it's not yet live in Production — Production credentials + Vercel env vars
+    + Snap App Review submission are still needed before real curators on `outroll.me` can connect.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -671,13 +687,16 @@ Next priorities after that, in rough priority order:
      `npm audit` completely (rather than just the critical item) becomes the priority.
 2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
-3. ~~**Snapchat needs a real Snap Developer Portal app and a live end-to-end test.**~~ **Fixed
-   2026-08-14.** App registered, Login Kit + scopes + redirect URIs + Demo User + Trusted Origin
-   all configured, real credentials in `.env` — verified fully end-to-end against a real
-   Snapchat account (curator "onetrack"): consent screen reached, granted, redirected back with
-   `SocialConnection` created, dashboard showing "Verified". See the Snapchat bullet under
-   "Social account verification" for exact details, including a transient Snap-side outage hit
-   (and outlasted) partway through.
+3. ~~**Snapchat needs a real Snap Developer Portal app and a live end-to-end test.**~~ **OAuth
+   mechanics verified 2026-08-14 — not yet live on `outroll.me`.** App registered, Login Kit +
+   scopes + redirect URIs + Demo User + Trusted Origin all configured, real Staging credentials
+   in local `.env` — verified fully end-to-end against a real Snapchat account (curator
+   "onetrack") locally: consent screen reached, granted, redirected back with `SocialConnection`
+   created, dashboard showing "Verified". **Still needed before this works for real curators on
+   the live site**: generate Production Confidential Client ID/Secret, set them in Vercel's
+   production env (not local `.env`), and submit the app version for Snap App Review. See the
+   Snapchat bullet under "Social account verification" for exact details, including a transient
+   Snap-side outage hit (and outlasted) partway through the local test.
 4. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
    deprecated `pages_show_list`/`pages_read_engagement` scopes. Lower priority since it's not
    part of the application flow, only post-signup listing verification — but worth its own fix
