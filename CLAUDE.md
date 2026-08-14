@@ -320,10 +320,38 @@ what's always been true at the *application* step.
   itself still just shows "Verified" with no link (the whole card is already one big link to the
   listing detail page, and anchors can't nest) — the clickable profile link only appears once you
   land on `/listings/[id]` or the curator's own dashboard. Bitmoji avatar is downloaded and re-encoded as a
-  data URL for the profile photo, same pattern as Instagram's `toDataUrl()`. **Not yet verified
-  live against a real Snapchat account** — `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me`
-  placeholders; needs a real Snap Developer Portal app registered and the flow exercised
-  end-to-end before trusting it in production.
+  data URL for the profile photo, same pattern as Instagram's `toDataUrl()`.
+  **App registered 2026-08-14, not yet verified end-to-end against a real Snapchat account** —
+  a real Snap Kit app ("Outroll") was created in the `onetrack` organization at the Snap
+  Developer Portal (app ID `f43c0dc3-f1e8-4c04-b43b-e0efeb92da55`), with Login Kit enabled,
+  the `Display Name` permission checked (the portal's current UI only exposes `Display Name`/
+  `Bitmoji Avatar`/`Story Studio API` as togglable permissions — `user.external_id` isn't a
+  separate toggle, it's the base account identifier included with any Login Kit grant), and
+  both redirect URIs registered (`http://localhost:3000/api/curator/connections/snapchat/callback`
+  and `https://outroll.me/api/curator/connections/snapchat/callback`). A **Confidential OAuth 2.0
+  Client ID** (not the Public one — Public is for client-side/mobile, Confidential is for
+  server-side session management per Snap's own docs) was generated and both values are now in
+  `.env` as `SNAPCHAT_CLIENT_ID`/`SNAPCHAT_CLIENT_SECRET`, replacing the `replace_me` placeholders.
+  Also added, since Staging-mode apps require both: a **Demo User** (`onetrackm`, under Setup →
+  Demo Users — required to test on Staging at all; any Snapchat username not on this list gets
+  rejected) and a **Trusted Origin** (`http://localhost:3000`, Stage: Staging, under Setup →
+  Platform Identifiers).
+  - **Hit a transient Snap-side outage mid-verification, then confirmed working end-to-end.**
+    Several attempts to hit `https://accounts.snapchat.com/accounts/oauth2/auth` directly (both
+    Public and Confidential client IDs, both the localhost and production redirect URIs) returned
+    a generic "Authorization Error — Failed to load authorization data" page, with Snap's own
+    unrelated telemetry endpoints (`gcp.api.snapchat.com/web-blizzard/web/send`,
+    `story.snapchat.com/report-metrics/web-page-view`, `gcp.api.snapchat.com/web/metrics`)
+    returning `503` alongside it — a live Snap backend issue at that moment (2026-08-14), not a
+    config problem (the request URL construction was double-checked against Snap's own current
+    web integration guide and matched exactly). It cleared on its own within the same session:
+    retrying the real "Connect" button from `/curator/dashboard/listings` (curator **onetrack**)
+    reached Snapchat's actual consent screen ("Continue to Outroll (http://localhost)?", account
+    `onetrack`/`onetrackm`, requesting Display Name), and clicking through completed the full
+    round trip — redirected back to `/curator/dashboard/listings?connected=SNAPCHAT` with a
+    "Snapchat connected and verified." banner, and the Snapchat row switched from "Connect" to
+    `@onetrack · Verified` with genre/price fields and a "List it" button, same as every other
+    connected platform. **Verified fully end-to-end against a real Snapchat account.**
 - **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
   deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
   original build's Dec 2024 "Basic Display API killed" note was already aware something had
@@ -447,9 +475,10 @@ what's always been true at the *application* step.
       Development-mode restriction, not specific to this app) — confirmed 2026-08-11 that
       `@onetrack` is already an accepted (not just invited) Instagram Tester, so real-account
       testing works today even though public App Review hasn't landed.
-  - `GOOGLE_CLIENT_ID`/`SECRET`, `TIKTOK_CLIENT_KEY`/`SECRET`, and `SNAPCHAT_CLIENT_ID`/`SECRET`
-    are all still `replace_me` placeholders — Google/YouTube and Snapchat are both self-serve
-    with no App Review wait, unlike TikTok, so either is a good next target.
+  - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still `replace_me`
+    placeholders — Google/YouTube is self-serve with no App Review wait, unlike TikTok, so it's
+    a good next target. Snapchat is fully configured and verified end-to-end against a real
+    account (see the Snapchat bullet above) — done.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -642,11 +671,13 @@ Next priorities after that, in rough priority order:
      `npm audit` completely (rather than just the critical item) becomes the priority.
 2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
-3. **Snapchat needs a real Snap Developer Portal app and a live end-to-end test** —
-   `SNAPCHAT_CLIENT_ID`/`SECRET` are still `replace_me` placeholders; the OAuth URL construction
-   was verified locally (redirects to the real Snapchat authorize endpoint with correct params)
-   but the full connect flow has never run against a real Snapchat account. Self-serve, no App
-   Review wait — a good quick win alongside Google/YouTube below.
+3. ~~**Snapchat needs a real Snap Developer Portal app and a live end-to-end test.**~~ **Fixed
+   2026-08-14.** App registered, Login Kit + scopes + redirect URIs + Demo User + Trusted Origin
+   all configured, real credentials in `.env` — verified fully end-to-end against a real
+   Snapchat account (curator "onetrack"): consent screen reached, granted, redirected back with
+   `SocialConnection` created, dashboard showing "Verified". See the Snapchat bullet under
+   "Social account verification" for exact details, including a transient Snap-side outage hit
+   (and outlasted) partway through.
 4. **Facebook Reels verification is confirmed broken** (not just untested) — still targets the
    deprecated `pages_show_list`/`pages_read_engagement` scopes. Lower priority since it's not
    part of the application flow, only post-signup listing verification — but worth its own fix
