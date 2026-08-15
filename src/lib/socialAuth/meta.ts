@@ -1,16 +1,22 @@
-// Facebook Reels verification via Meta's Graph API (Facebook Login + Pages API). Requires a
-// Meta Developer app with Facebook Login added, in Live mode with App Review approval for
-// `pages_show_list` and `pages_read_engagement` — see CLAUDE.md for the full checklist.
+// Facebook Reels verification via Meta's Graph API (Facebook Login for Business + Pages API).
 //
-// Instagram used to share this same module/app, but no longer does — Meta deprecated
-// pages_show_list/pages_read_engagement/instagram_basic (the scopes Instagram verification
-// used to run on) January 27, 2025. Instagram now goes through instagram.ts's "Instagram API
-// with Instagram Login" instead, a separate app/provider that doesn't need a Facebook Page at
-// all. Facebook Reels still needs this older path since its follower count is a Page metric,
-// not an Instagram one — this hasn't been re-verified against a real Meta app since the
-// deprecation, unlike Instagram (see CLAUDE.md's "Social account verification" section).
+// 2026-08-15 correction: an earlier session's CLAUDE.md note claimed pages_show_list/
+// pages_read_engagement were deprecated platform-wide (Jan 2025) alongside the Instagram
+// scopes. Re-checked directly against Meta's current developer docs — that's wrong. Both
+// permissions are still live and documented today. What's actually true: they're not offered
+// under the plain consumer "Facebook Login" use case (which is what the original Meta app was
+// built with, and which is why they never appeared in that app's App Review picker) — they're
+// gated behind **Facebook Login for Business**, which requires the app to be a Business-type
+// app with a "Login Configuration" (Configurations tab in the App Dashboard) that bundles the
+// permissions and produces a `config_id`. The authorize dialog then takes `config_id` instead
+// of `scope`. See CLAUDE.md's Facebook Reels setup checklist for the exact console steps —
+// none of that can be done from code, it needs the Meta account holder.
+//
+// Also fixed here: GRAPH_VERSION was pinned to v19.0, which Meta has since expired (v18/v19
+// return hard errors as of 2026) — independent of the permissions issue, this alone would have
+// broken every request. Bumped to v25.0.
 
-const GRAPH_VERSION = 'v19.0';
+const GRAPH_VERSION = 'v25.0';
 const AUTH_URL = `https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`;
 const TOKEN_URL = `https://graph.facebook.com/${GRAPH_VERSION}/oauth/access_token`;
 const GRAPH_BASE = `https://graph.facebook.com/${GRAPH_VERSION}`;
@@ -20,12 +26,18 @@ function redirectUri(): string {
   return `${base}/api/curator/connections/meta/callback`;
 }
 
+// Facebook Login for Business uses a pre-built Login Configuration (config_id) in place of a
+// dynamic `scope` param — the configuration itself (created in the App Dashboard) is what
+// actually specifies pages_show_list/pages_read_engagement. response_type/override_default_
+// response_type are required so the config-based dialog returns a `code` the same way the old
+// scope-based flow did, instead of defaulting to a token-in-fragment response.
 export function getAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: process.env.META_CLIENT_ID ?? '',
     redirect_uri: redirectUri(),
+    config_id: process.env.META_LOGIN_CONFIG_ID ?? '',
     response_type: 'code',
-    scope: 'pages_show_list,pages_read_engagement',
+    override_default_response_type: 'true',
     state,
   });
   return `${AUTH_URL}?${params.toString()}`;
