@@ -26,32 +26,32 @@ export function verifyPassword(password: string, hash: string): Promise<boolean>
 
 export async function setCuratorSession(curatorId: string) {
   const token = await createSessionToken({ sub: curatorId, role: 'curator' });
-  cookies().set(CURATOR_SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+  (await cookies()).set(CURATOR_SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 }
 
 export async function setAdminSession(adminId: string) {
   const token = await createSessionToken({ sub: adminId, role: 'admin' });
-  cookies().set(ADMIN_SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
+  (await cookies()).set(ADMIN_SESSION_COOKIE, token, SESSION_COOKIE_OPTIONS);
 }
 
-export function clearCuratorSession() {
-  cookies().delete(CURATOR_SESSION_COOKIE);
+export async function clearCuratorSession() {
+  (await cookies()).delete(CURATOR_SESSION_COOKIE);
 }
 
-export function clearAdminSession() {
-  cookies().delete(ADMIN_SESSION_COOKIE);
+export async function clearAdminSession() {
+  (await cookies()).delete(ADMIN_SESSION_COOKIE);
 }
 
 /** Reads and verifies the curator session cookie from the current request (server components / route handlers). */
 export async function getCuratorSession(): Promise<SessionPayload | null> {
-  const token = cookies().get(CURATOR_SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(CURATOR_SESSION_COOKIE)?.value;
   if (!token) return null;
   const payload = await verifySessionToken(token);
   return payload?.role === 'curator' ? payload : null;
 }
 
 export async function getAdminSession(): Promise<SessionPayload | null> {
-  const token = cookies().get(ADMIN_SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   if (!token) return null;
   const payload = await verifySessionToken(token);
   return payload?.role === 'admin' ? payload : null;

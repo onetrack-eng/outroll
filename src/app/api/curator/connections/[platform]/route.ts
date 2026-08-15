@@ -8,11 +8,12 @@ import { platformForStartRoute } from '@/lib/socialAuth';
 // connection -- reconnecting doesn't auto-resume it, so the curator can review price/details
 // before going live again. `params.platform` is the same route-friendly segment used by
 // /start (e.g. "youtube_shorts"), not the Prisma enum value directly.
-export async function DELETE(_req: NextRequest, { params }: { params: { platform: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
+  const { platform: platformParam } = await params;
   const session = await getCuratorSession();
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const platform = platformForStartRoute(params.platform);
+  const platform = platformForStartRoute(platformParam);
   if (!platform) {
     return NextResponse.json({ error: 'Unknown platform' }, { status: 404 });
   }

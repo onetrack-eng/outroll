@@ -7,9 +7,14 @@ import { verifiedFollowerCountsFor } from '@/lib/verifiedFollowerCounts';
 
 export const dynamic = 'force-dynamic';
 
-export default async function CuratorProfilePage({ params }: { params: { id: string } }) {
+export default async function CuratorProfilePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const curator = await prisma.curator.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { listings: { where: { isPaused: false } } },
   });
 

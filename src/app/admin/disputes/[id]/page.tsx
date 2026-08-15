@@ -8,12 +8,17 @@ import { formatCents } from '@/lib/constants';
 
 export const dynamic = 'force-dynamic';
 
-export default async function AdminDisputeDetailPage({ params }: { params: { id: string } }) {
+export default async function AdminDisputeDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const session = await getAdminSession();
   if (!session) redirect('/admin/login');
 
   const dispute = await prisma.dispute.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { hold: { include: { curator: true, campaign: true, listing: true } } },
   });
   if (!dispute) notFound();

@@ -1,12 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input, Label } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 
-export default function ResetPasswordPage({ params }: { params: { token: string } }) {
+export default function ResetPasswordPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = use(params);
   const router = useRouter();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,7 +29,7 @@ export default function ResetPasswordPage({ params }: { params: { token: string 
     const res = await fetch('/api/curator/reset-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: params.token, password }),
+      body: JSON.stringify({ token, password }),
     });
     setLoading(false);
     if (!res.ok) {

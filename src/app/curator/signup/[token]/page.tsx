@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Input, Label } from '@/components/ui/Input';
@@ -9,7 +9,12 @@ import { Button } from '@/components/ui/Button';
 // Every platform now requires OAuth verification (see GATED_PLATFORMS in @/lib/constants),
 // which needs an authenticated curator to exist first — so listings are only ever created
 // after signup, from the dashboard's "Connect account" flow, not here.
-export default function CuratorSignupPage({ params }: { params: { token: string } }) {
+export default function CuratorSignupPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = use(params);
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -24,7 +29,7 @@ export default function CuratorSignupPage({ params }: { params: { token: string 
     const res = await fetch('/api/curator/signup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: params.token, username, password, displayName }),
+      body: JSON.stringify({ token, username, password, displayName }),
     });
     setLoading(false);
     if (!res.ok) {

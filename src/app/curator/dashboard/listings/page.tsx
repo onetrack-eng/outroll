@@ -19,8 +19,9 @@ export const dynamic = 'force-dynamic';
 export default async function CuratorListingsPage({
   searchParams,
 }: {
-  searchParams: { connected?: string; connection_error?: string };
+  searchParams: Promise<{ connected?: string; connection_error?: string }>;
 }) {
+  const { connected, connection_error } = await searchParams;
   const session = await getCuratorSession();
   if (!session) redirect('/curator/login');
 
@@ -36,14 +37,14 @@ export default async function CuratorListingsPage({
     <div className="mx-auto max-w-content px-6 py-16">
       <h1 className="mb-8 text-2xl font-semibold tracking-tight">Your listings</h1>
 
-      {searchParams.connected && (
+      {connected && (
         <p className="mb-6 rounded-lg bg-success/10 px-4 py-3 text-sm text-success">
-          {platformLabel(searchParams.connected)} connected and verified.
+          {platformLabel(connected)} connected and verified.
         </p>
       )}
-      {searchParams.connection_error && (
+      {connection_error && (
         <p className="mb-6 rounded-lg bg-danger/10 px-4 py-3 text-sm text-danger">
-          {searchParams.connection_error}
+          {connection_error}
         </p>
       )}
 

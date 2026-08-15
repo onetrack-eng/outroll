@@ -10,12 +10,17 @@ export const dynamic = 'force-dynamic';
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 
-export default async function SubmissionDetailPage({ params }: { params: { id: string } }) {
+export default async function SubmissionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
   const session = await getCuratorSession();
   if (!session) redirect('/curator/login');
 
   const hold = await prisma.hold.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { campaign: true, listing: true, dispute: true },
   });
 

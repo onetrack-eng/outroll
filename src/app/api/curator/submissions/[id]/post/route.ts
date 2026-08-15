@@ -9,7 +9,8 @@ import { sendArtistHoldStatusEmail } from '@/lib/resend';
 
 // Curator submits the live post link. No verification is performed unless a dispute is filed
 // (spec section 3) — we just start the one-week payout hold.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getCuratorSession();
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const hold = await prisma.hold.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { campaign: true, curator: true },
   });
   if (!hold || hold.curatorId !== session.sub) {

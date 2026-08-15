@@ -9,12 +9,13 @@ import { sendArtistHoldStatusEmail } from '@/lib/resend';
 
 // Curator accepts a submission: capture the held PaymentIntent immediately (spec section 3:
 // "On accept, the hold is captured immediately") and open a fresh 7-business-day post window.
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getCuratorSession();
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const hold = await prisma.hold.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { campaign: true, curator: true },
   });
   if (!hold || hold.curatorId !== session.sub) {

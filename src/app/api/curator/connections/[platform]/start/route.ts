@@ -7,13 +7,14 @@ import { generateCodeVerifier } from '@/lib/socialAuth/pkce';
 // Kicks off the OAuth round trip for one of the gated platforms (see GATED_PLATFORMS in
 // @/lib/constants). `params.platform` is a route-friendly segment (e.g. "youtube_shorts"), not
 // the Prisma enum value directly.
-export async function GET(req: NextRequest, { params }: { params: { platform: string } }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ platform: string }> }) {
+  const { platform: platformParam } = await params;
   const session = await getCuratorSession();
   if (!session) {
     return NextResponse.redirect(new URL('/curator/login?next=/curator/dashboard/listings', req.url));
   }
 
-  const platform = platformForStartRoute(params.platform);
+  const platform = platformForStartRoute(platformParam);
   if (!platform) {
     return NextResponse.json({ error: 'Unknown platform' }, { status: 404 });
   }

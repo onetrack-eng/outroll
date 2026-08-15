@@ -11,9 +11,14 @@ export const dynamic = 'force-dynamic';
 
 const dateFmt = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
-export default async function ArtistDashboardPage({ params }: { params: { token: string } }) {
+export default async function ArtistDashboardPage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
   const campaign = await prisma.campaign.findUnique({
-    where: { magicLinkToken: params.token },
+    where: { magicLinkToken: token },
     include: {
       holds: {
         include: { curator: true, listing: true, dispute: true },
@@ -76,7 +81,7 @@ export default async function ArtistDashboardPage({ params }: { params: { token:
 
               {disputeEligible && (
                 <Link
-                  href={`/dashboard/${params.token}/dispute/${hold.id}`}
+                  href={`/dashboard/${token}/dispute/${hold.id}`}
                   className="text-sm text-ink underline"
                 >
                   Something wrong? File a dispute →

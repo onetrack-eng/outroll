@@ -14,7 +14,8 @@ const schema = z.object({
 // Admin's binary dispute resolution (spec section 2: "full payout to curator or full refund
 // to artist (no partial outcomes) — scoped to the single disputed hold"). Every other hold in
 // the campaign, and every other hold this curator has in flight, is unaffected.
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!parsed.success) return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
 
   const dispute = await prisma.dispute.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { hold: { include: { curator: true, campaign: true } } },
   });
   if (!dispute) return NextResponse.json({ error: 'Dispute not found' }, { status: 404 });

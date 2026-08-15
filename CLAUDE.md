@@ -1016,3 +1016,13 @@ Next priorities after that, in rough priority order:
     dispute-filing routes are all wide open. Fine at current volume, not fine at scale.
 12. Then continue down the rest of both "Known simplifications" lists in priority order (curator
     username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

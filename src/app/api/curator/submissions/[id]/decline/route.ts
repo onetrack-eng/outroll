@@ -8,12 +8,13 @@ import { sendArtistHoldStatusEmail } from '@/lib/resend';
 
 // Curator declines: cancel the authorized PaymentIntent, which releases the hold and refunds
 // the artist instantly (spec section 3: "Declines and timeouts release the hold instantly").
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const session = await getCuratorSession();
   if (!session) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
   const hold = await prisma.hold.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: { campaign: true, curator: true },
   });
   if (!hold || hold.curatorId !== session.sub) {

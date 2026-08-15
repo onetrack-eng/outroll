@@ -4,11 +4,12 @@ import { getAdminSession } from '@/lib/auth';
 import { generateMagicLinkToken } from '@/lib/magicLink';
 import { sendCuratorApplicationApproved } from '@/lib/resend';
 
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   const admin = await getAdminSession();
   if (!admin) return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 
-  const application = await prisma.curatorApplication.findUnique({ where: { id: params.id } });
+  const application = await prisma.curatorApplication.findUnique({ where: { id } });
   if (!application) return NextResponse.json({ error: 'Application not found' }, { status: 404 });
   if (application.status !== 'PENDING') {
     return NextResponse.json({ error: 'Application already reviewed' }, { status: 409 });

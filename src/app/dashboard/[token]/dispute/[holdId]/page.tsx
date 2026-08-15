@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Textarea, Label } from '@/components/ui/Input';
@@ -9,8 +9,9 @@ import { Button } from '@/components/ui/Button';
 export default function FileDisputePage({
   params,
 }: {
-  params: { token: string; holdId: string };
+  params: Promise<{ token: string; holdId: string }>;
 }) {
+  const { token, holdId } = use(params);
   const router = useRouter();
   const [reason, setReason] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,7 @@ export default function FileDisputePage({
     const res = await fetch('/api/artist/dispute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: params.token, holdId: params.holdId, reason }),
+      body: JSON.stringify({ token, holdId, reason }),
     });
     setLoading(false);
     if (!res.ok) {
@@ -43,7 +44,7 @@ export default function FileDisputePage({
           We&rsquo;ll review and issue a binary resolution — full payout to the curator or a full
           refund to you.
         </p>
-        <Button onClick={() => router.push(`/dashboard/${params.token}`)}>Back to dashboard</Button>
+        <Button onClick={() => router.push(`/dashboard/${token}`)}>Back to dashboard</Button>
       </div>
     );
   }
