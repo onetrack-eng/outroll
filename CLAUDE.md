@@ -117,7 +117,10 @@ transfers to their connected account once payout conditions are met. USD only fo
 
 ## Architecture
 
-- **Next.js 14 (App Router) + TypeScript**, Tailwind for styling.
+- **Next.js 16 (App Router) + TypeScript**, Tailwind for styling. Upgraded from 14.2.35 straight to
+  16.3.1 on 2026-08-15 (skipped 15 entirely, since 16 was already current stable by then and the
+  async `params`/`searchParams` migration work is identical either way) — see the dated finding
+  under "Suggested next session" for the full story.
 - **Postgres via Prisma** — `prisma/schema.prisma` is the single source of truth for the data
   model. Read it before touching business logic; the comments there explain *why* each field
   exists, tied back to spec sections.
@@ -915,39 +918,78 @@ platform's actual 2026 API access live before deciding, not from memory). Since 
 platform is now gated, the old manual/self-reported listing path and at-signup pricing form are
 both gone — listings are only ever created after connecting an account from the dashboard.
 
+**Session 2026-08-15 (continued)**: checked all four pending App Review submissions live against
+their consoles (not from memory) — no change in any of them. `instagram_business_basic` is still
+"Review in progress" on Meta's console (blocking the Facebook Reels `pages_show_list` +
+`business_management` submission behind it, per Meta's one-review-at-a-time rule — see "Social
+account verification" above). Snapchat is still "In Review" (`Production Version: No Approved
+Versions`). TikTok is still "In review" (Production Setup tab shows a note about high review
+volume). Nothing to act on for any of these until the platforms move — no email was missed;
+checking the consoles directly is the only reliable signal. Also hit a real, unrelated blocker
+mid-session: the Facebook Developer Platform showed an "Account confirmation needed... unusual
+activity" checkpoint before the console would load at all — cleared once the account holder
+clicked through it directly (needed their own login; not something codeable). Separately, this
+session also fully upgraded Next.js 14→16 — see the dated finding under "Architecture" and item 1
+below for the complete story.
+
 Next priorities after that, in rough priority order:
 
-1. **Next.js was pinned to 14.2.13 (CRITICAL per npm audit) — patched to 14.2.35 same day.**
-   `npm audit` (run 2026-08-11, while installing Sentry) flagged a long list of real advisories:
-   authorization bypass in Middleware (CVE-2025-29927, the critical one), SSRF via Middleware
-   redirects, cache poisoning, several DoS vectors, XSS in App Router with CSP nonces, and more.
-   This predates this session — it had been pinned since the original scaffold and never
-   upgraded, just never surfaced until an audit was actually run.
-   - **14.2.35 is `next-14`'s final-ever release** — Next.js 14 reached End of Life on
-     2025-10-26, and 14.2.35 (shipped 2025-12-11) was its last security patch. It does fix the
-     critical Middleware bypass and a few others, but the 14.x line will never receive fixes for
-     anything discovered from here on. Bumping to it was a pure patch-version change (zero
-     breaking changes, confirmed: `npm run build` compiled clean, all 36 tests passed, and a
-     manual regression pass — homepage, a listing detail page, the curator dashboard with an
-     active session, admin login — showed no errors).
-   - **`npm audit` still shows 5 "high" findings against `next` after the bump** — but most
-     don't actually apply to how this app is built: this codebase has zero `next/image` usage,
-     no WebSockets, no i18n config, no rewrites, and (checked directly) zero React Server
-     Actions (`'use server'` isn't used anywhere — every form submission goes through a plain
-     `fetch('/api/...')` route handler instead), which rules out several of the listed
-     advisories outright. What's left that's genuinely relevant to this app's real surface: RSC
-     cache poisoning/DoS and Middleware-redirect cache poisoning — real, but lower severity in
-     practice at this app's current traffic than the fixed critical bypass was.
-   - **Fully clearing `npm audit` requires Next.js 15**, which is not a drop-in bump — Next 15
-     makes route `params`/`searchParams` async (`Promise<{...}>` instead of a plain object),
-     which touches **17 files** in this codebase that currently destructure `params: { ... }`
-     directly (page components and route handlers under `[id]`/`[token]`/`[platform]` dynamic
-     segments — e.g. `dashboard/[token]/page.tsx`, every `submissions/[id]/*` route,
-     `curator/listings/[id]/route.ts`, etc.). That's a real, invasive change across
-     money-flow-adjacent code, not something to fold into a quick patch bump — it needs its own
-     dedicated pass and full regression test before trusting it against a live payments app.
-     Deliberately not attempted in this session; flagged here as the next real step if clearing
-     `npm audit` completely (rather than just the critical item) becomes the priority.
+1. ~~**Next.js was pinned to 14.2.13 (CRITICAL per npm audit) — patched to 14.2.35 same day.**~~
+   **Fully upgraded to Next.js 16.3.1 on 2026-08-15** (own session, separate from the 14.2.35
+   patch bump described below), clearing `npm audit` completely rather than just the critical
+   item. Went straight from 14.2.35 to 16 — skipped 15 entirely — since 16 was already current
+   stable by the time this was picked up and the async `params`/`searchParams` migration work is
+   identical either way, so there was no reason to do it twice. Full story:
+   - **17 page/route files plus 2 more found by grep** (`browse/page.tsx` and
+     `curator/dashboard/listings/page.tsx`, which use `searchParams`, not `params` — 19 files
+     total) were converted from synchronous `params`/`searchParams` to `Promise<{...}>` + `await`.
+     Three of them (`dashboard/[token]/dispute/[holdId]/page.tsx`,
+     `curator/signup/[token]/page.tsx`, `curator/reset-password/[token]/page.tsx`) are Client
+     Components, which can't be `async` functions — those use React's `use()` hook to unwrap the
+     params Promise instead of `await`.
+   - **`src/lib/auth.ts`'s `cookies()` calls also needed the same treatment** — `cookies()` from
+     `next/headers` is async-only as of this version too, not just route `params`. Both
+     `clearCuratorSession`/`clearAdminSession` had to become `async` themselves (they weren't
+     before), so their two call sites (`api/curator/logout`, `api/admin/logout`) needed an added
+     `await`.
+   - **`@stripe/react-stripe-js` (v2→v6) and `@stripe/stripe-js` (v4→v9) also needed bumping** —
+     npm flagged the old versions as not declaring React 19 support at all (peer-dep warning, not
+     a hard failure). Checked `CheckoutPaymentStep.tsx`'s actual API surface first
+     (`Elements`/`PaymentElement`/`useStripe`/`useElements`/`confirmSetup`/`confirmCardPayment`) —
+     all stable, unchanged APIs across those majors, so this was a safe bump, not a rewrite.
+   - **ESLint migrated to flat config** — `next lint` is removed entirely in Next.js 16. Replaced
+     `.eslintrc.json` with `eslint.config.mjs` (using `eslint-config-next/core-web-vitals` +
+     `/typescript`), bumped `eslint` from 8.x to 9.x (`eslint-config-next@16` requires ESLint
+     9+), and changed the `lint` script from `next lint` to `eslint .`.
+   - **`middleware.ts` was deliberately *not* renamed to `proxy.ts`**, even though Next 16's
+     codemod would do this automatically and the old convention now prints a deprecation
+     warning at build time. Renaming to `proxy.ts` forces the Node.js runtime (Next 16's `proxy`
+     doesn't support Edge at all) — but `src/lib/session.ts` is deliberately Edge-safe
+     specifically *because* `middleware.ts` runs on the Edge runtime (see the Architecture
+     section). Migrating would mean re-deciding that whole split, not just a rename. `middleware`
+     still works in 16, just deprecated — revisit this if Next ever actually removes it.
+   - **Turbopack (now default for both `dev` and `build` in 16) coexists fine with the existing
+     Sentry `withSentryConfig` wrapping** in `next.config.mjs` — no config changes were needed;
+     `npm run build` compiled clean on the first attempt.
+   - **`next dev` now auto-appends a small "AI agent rules" block to the bottom of this very
+     file** (see the very end of this document) — a real, documented Next 16 feature that writes
+     into whichever agent-instruction file it recognizes (this file matched). It's regenerated by
+     `next dev` itself (`node_modules/next/dist/server/lib/generate-agent-files.js`) and Next's
+     own guidance says to keep it committed rather than strip it, so it's left in place. Harmless
+     boilerplate, not something this project authored.
+   - **Verified via `tsc --noEmit` (clean), `npm run build` (clean, Turbopack), and the full test
+     suite (36/36 passing)** — then deployed (`git push origin main` → Vercel auto-deploy,
+     commit `b1b2e0a`) and confirmed live against production `outroll.me`: homepage renders real
+     DB data, `/browse` (async `searchParams`) works, and `/listings/[id]` (async `params`) loads
+     a real listing with correct data. Local browser regression *wasn't* completed — see the next
+     bullet.
+   - **Known issue surfaced, not fixed: local dev's Neon Postgres credential in `.env` fails
+     authentication** (`Authentication failed against database server at
+     ep-late-wind-avgchmrg-pooler...`), blocking `npm run dev` locally. Confirmed unrelated to
+     this migration (the env var is present and correctly formatted; production's separate Vercel
+     credential works fine — verified live against `outroll.me` above). Likely a rotated password
+     or a paused/reset Neon branch. Needs checking against the Neon dashboard directly — not
+     something fixable without real credentials.
 2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
 3. ~~**Snapchat needs a real Snap Developer Portal app and a live end-to-end test.**~~ **Done as
@@ -1007,6 +1049,15 @@ Next priorities after that, in rough priority order:
    story and a real constraint worth knowing: the app is capped at 100 total distinct users for
    the lifetime of the project until formal Google verification is completed (`Verification
    Center` in the Google Auth Platform console) — worth doing before curator count gets close.
+8. **Local dev's Neon Postgres credential in `.env` is failing authentication** — surfaced
+   2026-08-15 while trying to do a browser regression pass after the Next.js 16 upgrade (see
+   item 1 above). `npm run dev` returns 500s on any DB-backed page with
+   `PrismaClientInitializationError: Authentication failed against database server at
+   ep-late-wind-avgchmrg-pooler...`. Confirmed unrelated to the Next.js upgrade — the env var
+   itself is present and correctly formatted, and production's separate Vercel-side credential
+   works fine (verified live against `outroll.me`). Likely a rotated password or a paused/reset
+   Neon branch; check the Neon dashboard directly, since this isn't fixable without real
+   credentials. Blocks all local dev until resolved.
 9. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
