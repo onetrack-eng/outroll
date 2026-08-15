@@ -159,23 +159,44 @@ transfers to their connected account once payout conditions are met. USD only fo
   hits the DB until `/api/checkout/confirm`, which creates the Campaign + Holds + PaymentIntents
   in one go and unwinds everything (cancels PIs, deletes rows) if any PaymentIntent fails
   partway through.
-- **Sentry (error monitoring), added 2026-08-11** — `@sentry/nextjs`. `src/instrumentation.ts`
-  covers server + edge runtimes (Sentry's current recommended pattern — replaces the older
-  `sentry.server.config.ts`/`sentry.edge.config.ts` files, which now print a deprecation warning
-  at build time if present); `sentry.client.config.ts` covers the browser and is *deliberately
-  not* migrated to the newer `instrumentation-client.ts` convention, since that requires
-  Turbopack and this project builds with Webpack (`next build` with no `--turbo` flag) — it
-  still works correctly here, just prints a forward-looking deprecation notice. `src/app/global-
-  error.tsx` catches errors that escape every nested `error.tsx` boundary. `next.config.mjs` is
-  wrapped with `withSentryConfig` for source-map upload, which only activates when
-  `SENTRY_AUTH_TOKEN` is set — without it the build just skips the upload with a warning, so
-  this is safe to have wrapped unconditionally. Every init call reads
-  `NEXT_PUBLIC_SENTRY_DSN` and self-disables gracefully when it's unset (local dev today).
-  **`NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/`SENTRY_AUTH_TOKEN` are still
-  `replace_me` placeholders** — needs a real Sentry project (sentry.io, free tier is enough at
-  this volume) before it actually reports anything. Verified locally: `npm run build` compiles
-  clean with the wrapper in place and self-disables with no DSN configured; not yet verified
-  against a real Sentry project since one doesn't exist yet.
+- **Sentry (error monitoring), added 2026-08-11, fully wired up and verified live in production
+  2026-08-15.** `@sentry/nextjs`. `src/instrumentation.ts` covers server + edge runtimes (Sentry's
+  current recommended pattern — replaces the older `sentry.server.config.ts`/
+  `sentry.edge.config.ts` files, which now print a deprecation warning at build time if present).
+  Client-side init lives in `src/instrumentation-client.ts` (migrated 2026-08-15 from the older
+  `sentry.client.config.ts`/webpack-plugin convention — required now that Next.js 16 defaults to
+  Turbopack for both `dev` and `build`, which doesn't load `sentry.client.config.ts` at all;
+  `instrumentation-client.ts` is Turbopack's supported convention). Also exports
+  `onRouterTransitionStart = Sentry.captureRouterTransitionStart` per Sentry's own
+  build-time "ACTION REQUIRED" prompt, for navigation instrumentation. `src/app/global-error.tsx`
+  catches errors that escape every nested `error.tsx` boundary. `next.config.mjs` is wrapped with
+  `withSentryConfig` for source-map upload, which only activates when `SENTRY_AUTH_TOKEN` is set
+  — without it the build just skips the upload with a warning, so this is safe to have wrapped
+  unconditionally. Every init call reads `NEXT_PUBLIC_SENTRY_DSN` and self-disables gracefully
+  when it's unset.
+  - **Real finding, 2026-08-15: despite what this file previously claimed, the Sentry project
+    itself was real and already receiving data — but only from local dev, never from
+    production.** `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT` had real values in local
+    `.env` (not `replace_me` as this file used to say) and had been quietly reporting local
+    `npm run dev` sessions to Sentry all along. But **none of the four `SENTRY_*` variables
+    existed in Vercel at all** (confirmed directly in the dashboard — Environment Variables
+    search for "SENTRY" returned zero results, in both Project and Shared scope; no Sentry
+    marketplace integration installed either), so production had never once reported to Sentry.
+    This was only caught by cross-referencing: a "production crash" visible in the Sentry
+    dashboard (release `50c9871e9ab5`, tagged `PrismaClientInitializationError`) turned out to be
+    the local Neon DB credential bug (see the item under "Next priorities" below) captured from a
+    local `npm run dev` run during this session — the stack trace pointed at a
+    `C:\Users\...\.next\dev\...` path, not a Vercel one. Fixed by adding all four variables to
+    Vercel Production (`NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT` added with
+    Sensitive **off**, since a DSN is meant to be public per Sentry's own docs; a fresh
+    `SENTRY_AUTH_TOKEN` was generated in Sentry's org settings — scopes: Source Map Upload,
+    Release Creation, Code Mappings — and added with Sensitive **on**, since it's a real secret)
+    and redeploying. **Verified live**: the redeploy's build log shows
+    `[@sentry/nextjs - After Production Compile] Sending telemetry data...` and a real source-map
+    upload pass (~50 files, one harmless "could not determine a source map reference" warning for
+    a single chunk); the resulting release (`3443b820d6f6`) appears in Sentry's dashboard tagged
+    `vercel-production`, proving the full pipeline — DSN → client + server init → source maps →
+    release tracking — is genuinely working from a real Vercel deployment for the first time.
 
 ## Stripe test-mode setup (verified working)
 
@@ -1019,9 +1040,15 @@ Next priorities after that, in rough priority order:
    checking the console directly, not assumed. **Decision: wait for that review to resolve, then
    submit the Pages permissions.** See the updated numbered checklist under the Facebook Reels
    setup section above for exact detail.
-5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
-   `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
-   Quick to finish: sign up at sentry.io, create a Next.js project, paste the DSN in.
+5. ~~**Sentry needs a real project.**~~ **Fully wired up and verified live in production
+   2026-08-15.** The project and DSN were already real (not `replace_me` as previously claimed
+   here), but were only ever configured in local `.env` — none of the four `SENTRY_*` variables
+   existed in Vercel, so production had never reported anything. Also migrated the client-side
+   init off the old `sentry.client.config.ts` convention to `src/instrumentation-client.ts`,
+   required now that Next.js 16 defaults to Turbopack (which doesn't load the old file at all).
+   See the Sentry bullet under "Architecture" above for the full story, including how this was
+   caught (a "production crash" in the dashboard turned out to be local dev activity) and the
+   live verification (a real release tagged `vercel-production` with source maps uploaded).
 6. ~~TikTok OAuth still needs real credentials configured.~~ **Done as of 2026-08-14, pending
    TikTok's approval.** Same shape as the Snapchat item above: OAuth mechanics verified fully
    end-to-end against Sandbox (via a Vercel Preview deployment, since TikTok's Sandbox rejects
