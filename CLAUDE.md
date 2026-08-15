@@ -981,15 +981,10 @@ Next priorities after that, in rough priority order:
      suite (36/36 passing)** — then deployed (`git push origin main` → Vercel auto-deploy,
      commit `b1b2e0a`) and confirmed live against production `outroll.me`: homepage renders real
      DB data, `/browse` (async `searchParams`) works, and `/listings/[id]` (async `params`) loads
-     a real listing with correct data. Local browser regression *wasn't* completed — see the next
-     bullet.
-   - **Known issue surfaced, not fixed: local dev's Neon Postgres credential in `.env` fails
-     authentication** (`Authentication failed against database server at
-     ep-late-wind-avgchmrg-pooler...`), blocking `npm run dev` locally. Confirmed unrelated to
-     this migration (the env var is present and correctly formatted; production's separate Vercel
-     credential works fine — verified live against `outroll.me` above). Likely a rotated password
-     or a paused/reset Neon branch. Needs checking against the Neon dashboard directly — not
-     something fixable without real credentials.
+     a real listing with correct data. Local browser regression wasn't completed in this same
+     pass, since local dev was separately broken — see item 8 below (found in this migration's
+     verification step, root-caused and fixed later the same session: a stale Neon compute
+     endpoint hostname in `.env`, not a Next.js issue).
 2. **Finish Meta App Review + Business Verification** (in progress, see above) — this is the one
    thing standing between "works for us" and "works for real applicants."
 3. ~~**Snapchat needs a real Snap Developer Portal app and a live end-to-end test.**~~ **Done as
@@ -1049,15 +1044,18 @@ Next priorities after that, in rough priority order:
    story and a real constraint worth knowing: the app is capped at 100 total distinct users for
    the lifetime of the project until formal Google verification is completed (`Verification
    Center` in the Google Auth Platform console) — worth doing before curator count gets close.
-8. **Local dev's Neon Postgres credential in `.env` is failing authentication** — surfaced
-   2026-08-15 while trying to do a browser regression pass after the Next.js 16 upgrade (see
-   item 1 above). `npm run dev` returns 500s on any DB-backed page with
-   `PrismaClientInitializationError: Authentication failed against database server at
-   ep-late-wind-avgchmrg-pooler...`. Confirmed unrelated to the Next.js upgrade — the env var
-   itself is present and correctly formatted, and production's separate Vercel-side credential
-   works fine (verified live against `outroll.me`). Likely a rotated password or a paused/reset
-   Neon branch; check the Neon dashboard directly, since this isn't fixable without real
-   credentials. Blocks all local dev until resolved.
+8. ~~**Local dev's Neon Postgres credential in `.env` is failing authentication.**~~ **Fixed
+   2026-08-15.** Root cause found in the Neon console (`console.neon.tech`, project
+   `neon-camel-plank` / `wispy-cherry-80532350`, org "Vercel: OneTrack Dev"): it wasn't a rotated
+   password — the compute endpoint hostname itself had changed. `.env` still pointed at
+   `ep-late-wind-avgchmrg-pooler...`, a stale endpoint that no longer exists; the project's
+   actual active endpoint (Connect → main branch → Primary compute) is
+   `ep-shiny-shape-avao5a0w-pooler.c-11.us-east-1.aws.neon.tech`, same `neondb_owner` password
+   (`npg_6tXY2kRyLvKh`) unchanged. Only one project, one branch (`main`, Default, Active) exists
+   on this Neon account — nothing was paused or deleted, the hostname just drifted from what
+   `.env` had at some earlier point. Updated `DATABASE_URL` in `.env` to the current hostname and
+   confirmed `npm run dev` now returns 200 on the homepage. Production was never affected — its
+   separate Vercel-side env var already had the correct current value.
 9. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
