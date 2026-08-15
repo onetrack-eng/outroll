@@ -582,13 +582,22 @@ what's always been true at the *application* step.
     with a "Facebook Reels connected and verified." banner, row showing `@OnetrackMind ·
     Verified` with "List it" ready — same shape as every other connected platform, no follower
     count as designed.
-  - **Still needed, not done**: submit `pages_show_list` + `business_management` for App Review
-    so real (non-Tester/Developer) curators can connect — right now this only works because the
-    test account has a role on the app (same Development-mode restriction as every other
-    platform here before its review). There's already an unrelated App Review submission "In
-    Review" for `instagram_business_basic` on this app; untested whether a second submission can
-    be added alongside it or needs its own — check the Review → App Review page for current
-    state.
+  - **Still needed, not done — blocked on a real Meta platform constraint, confirmed live
+    2026-08-15, not just assumed:** `pages_show_list` + `business_management` need submitting for
+    App Review so real (non-Tester/Developer) curators can connect — right now this only works
+    because the test account has a role on the app (same Development-mode restriction as every
+    other platform here before its review). Both permissions already show "Ready for testing"
+    under Use Cases → Manage Pages → Permissions and features, and clicking "Add to App Review"
+    on either says *"This request is already pending review. If you need to make changes, you can
+    cancel your request and submit a new one or wait until this current request is complete"* —
+    so they're queued. **Meta does not allow a second concurrent App Review submission**: the
+    Review → App Review page only shows the existing "Review in progress" submission for
+    `instagram_business_basic` (from the Instagram work), with no way in the console to start a
+    second one alongside it. Decision made 2026-08-15: **wait for the `instagram_business_basic`
+    review to resolve, then submit `pages_show_list`/`business_management` right after** — rather
+    than cancel and resubmit combined, which would reset the Instagram review's clock and bundle
+    more permissions (and more chances for one to get flagged) into a single submission. Check
+    Review → App Review for the Instagram review's status before submitting the Pages one.
 - **Setup checklist per provider** (none of this can be done on your behalf — each needs your
   own developer account):
   - **Google (YouTube)** — **done, see the finding below.** Self-serve, no App Review wait: create
@@ -660,12 +669,17 @@ what's always been true at the *application* step.
        `business_management`), landed back on the dashboard with "Facebook Reels connected and
        verified." and the row showing `@OnetrackMind · Verified`, same shape as every other
        platform.
-    9. **Still needed:** submit `pages_show_list` + `business_management` for App Review so real
+    9. **Still needed, blocked on a confirmed Meta platform constraint (not untested anymore):**
+       submit `pages_show_list` + `business_management` for App Review so real
        (non-Tester/Developer) curators can connect — today this only works because the test
        account has a role on the app, the same Development-mode restriction every other gated
-       platform here had before its review. There's already an unrelated submission "In Review"
-       for `instagram_business_basic` on this app; untested whether a second submission can be
-       added alongside it or needs its own — check Review → App Review for current state.
+       platform here had before its review. Both permissions are already queued ("Ready for
+       testing," and re-clicking "Add to App Review" confirms a request is already pending), but
+       **Meta doesn't allow a second concurrent App Review submission** — the console only shows
+       the existing "Review in progress" submission for `instagram_business_basic`, no way to
+       start a second one alongside it. **Decision: wait for that review to resolve, then submit
+       the Pages permissions right after** — not cancel-and-resubmit-combined, which would reset
+       the Instagram review's clock. Check Review → App Review for the Instagram review's status.
     10. Redirect URI's *route* stays `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback`
         — no code/route changes there, only `getAuthUrl()`/`firstPage()`/`fetchProfile()` in
         `meta.ts` changed (config_id instead of scope, no follower count requested).
@@ -961,10 +975,13 @@ Next priorities after that, in rough priority order:
    ("onetrack") clicked Connect on `outroll.me` for real and got "Facebook Reels connected and
    verified." with `@OnetrackMind · Verified` showing. `pages_read_engagement` remains
    unobtainable for a personal-login flow, so — like Snapchat — there's no follower count.
-   **Still needed:** submit `pages_show_list` + `business_management` for App Review so curators
-   without a role on this app can connect; there's an unrelated review already in progress for
-   `instagram_business_basic`, untested whether a second submission can ride alongside it. See
-   the updated numbered checklist under the Facebook Reels setup section above for exact detail.
+   **Still needed, blocked on a confirmed Meta constraint:** submit `pages_show_list` +
+   `business_management` for App Review so curators without a role on this app can connect. Both
+   are already queued ("Ready for testing"), but Meta doesn't allow a second concurrent App
+   Review submission while `instagram_business_basic`'s review is in progress — confirmed by
+   checking the console directly, not assumed. **Decision: wait for that review to resolve, then
+   submit the Pages permissions.** See the updated numbered checklist under the Facebook Reels
+   setup section above for exact detail.
 5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
    `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
    Quick to finish: sign up at sentry.io, create a Next.js project, paste the DSN in.
