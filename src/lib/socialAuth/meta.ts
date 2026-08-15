@@ -1,19 +1,27 @@
 // Facebook Reels verification via Meta's Graph API (Facebook Login for Business + Pages API).
+// Verified fully end-to-end 2026-08-15 against a real Facebook account and real Page
+// ("OnetrackMind") — see CLAUDE.md for the full story. Two real, non-obvious findings baked
+// into this file:
 //
-// 2026-08-15 correction: an earlier session's CLAUDE.md note claimed pages_show_list/
-// pages_read_engagement were deprecated platform-wide (Jan 2025) alongside the Instagram
-// scopes. Re-checked directly against Meta's current developer docs — that's wrong, both are
-// still live. What's actually true, confirmed live in the App Dashboard: this app (App ID
-// 2796525164063265 — the same app as Instagram's, not a separate one; an earlier note claiming
-// a distinct META_CLIENT_ID app was also wrong) already had Facebook Login for Business, but
-// pages_show_list only became selectable after adding the separate "Pages API" use case
-// ("Manage everything on your Page"). pages_read_engagement never became selectable at all —
-// under a personal-login (User access token) Login Configuration, Meta only offers
-// business_management/instagram_manage_comments/pages_show_list; reading Page engagement/
-// follower data requires a System-user token tied to a Business Portfolio, which would mean
-// curators adding their own Page as an asset inside Outroll's business — not realistic for
-// arbitrary curators. So this only requests pages_show_list (proves Page ownership) and, like
-// Snapchat, never gets a follower count — see fetchProfile() below.
+// 1. This app (ID 2796525164063265) is the same app Instagram uses, not a separate one — an
+//    earlier session's note claiming a distinct META_CLIENT_ID app was wrong. It already had
+//    Facebook Login for Business as a product; pages_show_list only became selectable in a
+//    Login Configuration after also adding the "Pages API" use case ("Manage everything on your
+//    Page") from Use Cases → Add use cases.
+// 2. `/me/accounts` silently returns `{"data":[]}` — no error, just empty — unless the Login
+//    Configuration also grants `business_management`, even when the user explicitly picked a
+//    Page in the consent flow's asset picker and Facebook's own success screen confirmed the
+//    grant. `pages_show_list` alone is not sufficient; this is a known Meta platform quirk, not
+//    a bug in this code. Granting `business_management` triggers an extra "Choose the
+//    Businesses you want outroll to access" consent step, which is expected. Confirmed via a
+//    live raw-response debug log before adding the permission: same request, `pages_show_list`
+//    only → `{"data":[]}`; `pages_show_list` + `business_management` → real Page data back.
+//    `pages_read_engagement` remains unobtainable for a personal-login (User access token)
+//    config regardless — reading engagement/follower data would require a System-user token
+//    tied to a Business Portfolio, meaning curators adding their own Page as an asset inside
+//    Outroll's business, which isn't realistic for arbitrary curators. So this only ever gets
+//    id/name (proves Page ownership) and, like Snapchat, never a follower count — see
+//    fetchProfile() below.
 //
 // Also fixed here: GRAPH_VERSION was pinned to v19.0, which Meta has since expired (v18/v19
 // return hard errors as of 2026) — independent of the permissions issue, this alone would have
@@ -79,10 +87,6 @@ async function firstPage(accessToken: string) {
     throw new Error(`Meta pages lookup failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
-  // TEMP DEBUG 2026-08-15: diagnosing why /me/accounts returns no pages for a Business-Login
-  // asset-picker grant that Facebook's own consent screen confirmed included a Page. Remove
-  // once root-caused.
-  console.log('[meta debug] /me/accounts raw response:', JSON.stringify(data));
   const page = data.data?.[0];
   if (!page) {
     throw new Error('No Facebook Page found on this account. Connect a Page to verify.');
