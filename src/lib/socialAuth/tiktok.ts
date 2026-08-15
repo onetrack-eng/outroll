@@ -1,8 +1,11 @@
 // TikTok verification via TikTok Login Kit. Requires a TikTok for Developers app with Login Kit
-// added and the `user.info.stats` scope approved — that approval is the slow part (see
-// CLAUDE.md). TIKTOK_CLIENT_KEY/SECRET are placeholders until then. TikTok's v2 authorize
-// endpoint requires PKCE even for confidential clients — confirmed by testing against the real
-// endpoint, which rejects requests missing `code_challenge` with a clear error.
+// added and the `user.info.profile`/`user.info.stats` scopes approved — that approval is the slow
+// part (see CLAUDE.md). TikTok's v2 authorize endpoint requires PKCE even for confidential
+// clients — confirmed by testing against the real endpoint, which rejects requests missing
+// `code_challenge` with a clear error. `username` (used as the connection's handle) specifically
+// requires `user.info.profile`, not `user.info.basic` — `user.info.basic` alone only covers
+// open_id/avatar/display_name (confirmed against TikTok's Get User Info docs after `fetchProfile`
+// failed with `scope_not_authorized` requesting `username` under only basic+stats scopes).
 
 import { codeChallengeFromVerifier } from './pkce';
 
@@ -20,7 +23,7 @@ export function getAuthUrl(state: string, codeVerifier: string): string {
     client_key: process.env.TIKTOK_CLIENT_KEY ?? '',
     redirect_uri: redirectUri(),
     response_type: 'code',
-    scope: 'user.info.basic,user.info.stats',
+    scope: 'user.info.basic,user.info.profile,user.info.stats',
     state,
     code_challenge: codeChallengeFromVerifier(codeVerifier),
     code_challenge_method: 'S256',
