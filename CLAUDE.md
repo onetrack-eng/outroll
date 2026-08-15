@@ -607,16 +607,29 @@ what's always been true at the *application* step.
     4. ~~Create a Login Configuration~~ **Done 2026-08-15** — named "Facebook Reels
        verification", User access token, permission `pages_show_list` only, Configuration ID
        `1000436503032670`, already in `.env` as `META_LOGIN_CONFIG_ID`.
-    5. **Still needed:** set `META_CLIENT_ID`/`META_CLIENT_SECRET` in `.env` and in Vercel's
-       Production env vars to the **same values already used for
-       `INSTAGRAM_CLIENT_ID`/`INSTAGRAM_CLIENT_SECRET`** (App ID `2796525164063265` and its
-       secret from Settings → Basic) — this app was never given separate credentials for
-       Facebook Reels, and doesn't need them. Redeploy after setting them.
-    6. **Still needed:** submit `pages_show_list` for App Review. There's already an unrelated
+    5. **`META_CLIENT_ID`/`META_CLIENT_SECRET` turned out to already exist in Vercel Production
+       (added 2026-08-11) — left untouched, correctness unverified.** Went in expecting to set
+       them (assuming they'd never been set to anything real), but Vercel already had both.
+       Vercel marks them **Sensitive**, which is deliberately write-only — even the account owner
+       can't view a Sensitive value back through the dashboard once saved, so there was no way to
+       confirm they equal `INSTAGRAM_CLIENT_ID`/`SECRET` as this file assumes. The only other way
+       to get the value would've been revealing the App Secret on Meta's Basic Settings page,
+       which demands re-entering the Facebook account password — not something to do on someone
+       else's behalf, so that path was deliberately not taken either. **Given this app is
+       confirmed to be the only Meta app on the account, these are almost certainly already
+       correct — but if the Connect button errors on `invalid_client` or similar, this pair is
+       the first thing to check by hand** (Settings → Basic → Show, your own password) against
+       what's in Vercel.
+    6. ~~Set `META_LOGIN_CONFIG_ID` in Vercel~~ **Done 2026-08-15** — added to Production +
+       Preview, and the production deployment was redeployed (Vercel deployment `9Gn76Avt2`,
+       still commit `72348da`) so the running app actually has it. Not yet exercised: no curator
+       has actually clicked "Connect" against this live config — that verification needs a real
+       curator session (curator "onetrack"), which wasn't available in this browser session.
+    7. **Still needed:** submit `pages_show_list` for App Review. There's already an unrelated
        submission "In Review" for `instagram_business_basic` on this app — untested whether a
        second permission can be added to that same submission or needs its own; check the Review
        → App Review page for current state before assuming either way.
-    7. Redirect URI stays `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` — no
+    8. Redirect URI stays `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` — no
        code or route changes needed there, only `getAuthUrl()`/`firstPage()`/`fetchProfile()` in
        `meta.ts` changed (config_id instead of scope, no follower count requested).
   - All providers need a **real public HTTPS domain** for the redirect URI before submitting for
@@ -624,14 +637,16 @@ what's always been true at the *application* step.
     deploy history above), so that requirement is satisfied.
   - **Meta/Facebook Reels app**: **as of 2026-08-15, this is confirmed to be the same app as
     Instagram (`2796525164063265`)** — see the correction finding above; the earlier claim of a
-    separate `META_CLIENT_ID` app with its own real production credentials was wrong (there was
-    only ever this one app, and its `META_CLIENT_ID`/`SECRET` were never actually set to
-    anything real — `.env` had them as `replace_me` all along). Facebook Login for Business, the
-    Pages API use case, and a Login Configuration (`pages_show_list` only, ID
-    `1000436503032670`) are now set up on it. Not yet functional: `META_CLIENT_ID`/`SECRET` still
-    need to be set (to Instagram's real values) in `.env` and Vercel Production, and
-    `pages_show_list` needs an App Review submission. No follower count will ever come from this
-    connection — see the correction finding for why.
+    separate `META_CLIENT_ID` app was wrong (there was only ever this one app). `META_CLIENT_ID`/
+    `META_CLIENT_SECRET` **do already exist in Vercel Production** (added 2026-08-11, per Vercel's
+    dashboard) — correctness unverified, since Vercel's Sensitive-variable values can't be read
+    back once saved and re-confirming the value against Meta's console requires the account
+    password. Facebook Login for Business, the Pages API use case, a Login Configuration
+    (`pages_show_list` only, ID `1000436503032670`), and `META_LOGIN_CONFIG_ID` in Vercel are all
+    set up and live (production redeployed 2026-08-15 to pick it up). Not yet done: an App Review
+    submission for `pages_show_list`, and an actual end-to-end test — no curator has clicked
+    "Connect" against this config yet. No follower count will ever come from this connection —
+    see the correction finding for why.
   - **Instagram**: fully configured and verified. Real `INSTAGRAM_CLIENT_ID`/
     `INSTAGRAM_CLIENT_SECRET` are set in production, from a dedicated app (App ID
     `2796525164063265` — corrected 2026-08-11; an earlier version of this doc had
@@ -893,20 +908,22 @@ Next priorities after that, in rough priority order:
    restricted (see the Snapchat bullet under "Social account verification" for why, including a
    real architectural difference from how Meta's Tester system works). Check the Setup tab in the
    Snap Developer Portal for review status; nothing else needs to change once it's approved.
-4. **Facebook Reels verification — mostly done 2026-08-15, two steps left.** The prior "these
-   permissions are deprecated" diagnosis was wrong, and so was the prior claim of a separate Meta
-   app — this is the same app as Instagram (`2796525164063265`), see the correction finding under
-   "Social account verification" above. Live in the console this session: added the Pages API use
-   case, created a Login Configuration (`pages_show_list` only — `pages_read_engagement` turned
-   out to be unobtainable for a personal-login flow, so Facebook Reels ships without a follower
-   count, same as Snapchat). `meta.ts` now implements the `config_id` flow and a separately-found
-   expired Graph API version (`v19.0` → `v25.0`) was fixed in the same pass; `tsc --noEmit` and
-   `npm run build` are clean. **Not yet functional — two things left, both console-only:**
-   (1) set `META_CLIENT_ID`/`META_CLIENT_SECRET` in `.env` and Vercel Production to the same
-   values as `INSTAGRAM_CLIENT_ID`/`SECRET` (this app never had separate Facebook Reels
-   credentials) and redeploy; (2) submit `pages_show_list` for App Review — there's already an
-   unrelated review in progress for `instagram_business_basic` on this app, untested whether a
-   second permission can be added to it. See the updated numbered checklist under the Facebook
+4. **Facebook Reels verification — set up end-to-end 2026-08-15, one step left plus one
+   untested.** The prior "these permissions are deprecated" diagnosis was wrong, and so was the
+   prior claim of a separate Meta app — this is the same app as Instagram (`2796525164063265`),
+   see the correction finding under "Social account verification" above. Live in the console this
+   session: added the Pages API use case, created a Login Configuration (`pages_show_list` only —
+   `pages_read_engagement` turned out to be unobtainable for a personal-login flow, so Facebook
+   Reels ships without a follower count, same as Snapchat), added `META_LOGIN_CONFIG_ID` to
+   Vercel Production, and redeployed. `meta.ts` implements the `config_id` flow and a
+   separately-found expired Graph API version (`v19.0` → `v25.0`) was fixed in the same pass;
+   `tsc --noEmit` and `npm run build` are clean. **Still needed:** (1) submit `pages_show_list`
+   for App Review — there's already an unrelated review in progress for `instagram_business_basic`
+   on this app, untested whether a second permission can be added to it; (2) an actual end-to-end
+   test — `META_CLIENT_ID`/`SECRET` already existed in Vercel (added Aug 11) but their correctness
+   was never confirmed (Vercel hides Sensitive values, and re-checking against Meta requires the
+   account password), and no curator has clicked "Connect" against the new config yet. If it
+   errors, check that pair by hand first. See the updated numbered checklist under the Facebook
    Reels setup section above for exact detail.
 5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
    `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
