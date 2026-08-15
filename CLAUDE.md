@@ -517,25 +517,49 @@ what's always been true at the *application* step.
   the profile-photo feature below). Confirmed both through the pre-account `/apply` flow and the
   post-signup dashboard "Connect" flow (re-authorized the same account, `SocialConnection`
   correctly upserted rather than duplicated).
-  **Correction, 2026-08-15**: this file previously claimed `pages_show_list`/
-  `pages_read_engagement` were *also* deprecated alongside `instagram_basic`, based on them not
-  appearing in that Meta app's App Review permission picker. Re-checked directly against Meta's
-  current developer docs (not just re-reading this file) — that claim was wrong. Both
-  permissions are still live and documented today. What was actually true: they're not offered
-  under the plain consumer **Facebook Login** use case, which is what the original Meta app was
-  built with — they're gated behind **Facebook Login for Business** (a Business-type app + a
-  "Login Configuration" that bundles the permissions into a `config_id`), a distinct product
-  from the Facebook Login the app was using. That's an app-configuration gap, not a platform
-  deprecation. `src/lib/socialAuth/meta.ts` has been rewritten against Facebook Login for
-  Business: `getAuthUrl()` now sends `config_id` (from a new `META_LOGIN_CONFIG_ID` env var)
-  instead of `scope`, with `response_type=code&override_default_response_type=true` so the
-  config-based dialog still returns an authorization code. A second, independent bug was found
-  and fixed in the same pass: `GRAPH_VERSION` was pinned to `v19.0`, which Meta has since
-  expired (v18/v19 now hard-error) — that alone would have broken every Graph API call here
-  regardless of the permissions question. Bumped to `v25.0`. **Not yet verified against a real
-  Meta app** — this needs console-side setup only the account holder can do (see the checklist
-  below); the code changes above compile clean (`tsc --noEmit`) but haven't been exercised
-  against a real OAuth round trip.
+  **Correction, 2026-08-15, done live in the App Dashboard (not guessed):** this file previously
+  claimed `pages_show_list`/`pages_read_engagement` were *also* deprecated alongside
+  `instagram_basic`. Wrong on two counts, both found by actually clicking through Meta's console:
+  1. **There is only one Meta app, not two.** The "separate `META_CLIENT_ID` app" this file
+     described never existed — this Facebook developer account (`jwexler2000@gmail.com`) has
+     exactly one app total ("outroll", App ID `2796525164063265`, Business "OneTrackMind"), the
+     same one Instagram uses. `META_CLIENT_ID`/`META_CLIENT_SECRET` should be the **same values**
+     as `INSTAGRAM_CLIENT_ID`/`INSTAGRAM_CLIENT_SECRET` — not a separate app/secret.
+  2. **`pages_show_list` is obtainable, `pages_read_engagement` is not — for a reason, not a bug.**
+     The app already had Facebook Login for Business added, but `pages_show_list` only became
+     selectable in a Login Configuration after also adding the separate **"Pages API"** use case
+     ("Manage everything on your Page", found under Use Cases → Add use cases → Content
+     management). `pages_read_engagement` never became selectable at all: under a personal-login
+     (**User access token**) Login Configuration — the only kind that fits curators authorizing
+     with their own Facebook account — Meta only ever offers three permissions total:
+     `business_management`, `instagram_manage_comments`, `pages_show_list`. Reading Page
+     engagement/follower data requires a **System-user access token tied to a Business
+     Portfolio**, per Meta's own tooltip: "This is only required if this configuration needs
+     continuous access to business assets (e.g. Facebook Pages...)". That would mean every
+     curator adding their own Page as an asset inside *Outroll's* Business Portfolio — not
+     realistic for arbitrary curators, so this was not pursued further.
+  **Decision: ship with `pages_show_list` only, no follower count** — same asymmetry Snapchat's
+  Login Kit already has in this codebase (proves ownership, no number). `src/lib/socialAuth/meta.ts`
+  now: sends `config_id` (a new `META_LOGIN_CONFIG_ID` env var) instead of `scope` in
+  `getAuthUrl()`, with `response_type=code&override_default_response_type=true` so the
+  config-based dialog still returns an authorization code; `firstPage()` no longer requests
+  `followers_count` (it would silently return nothing without `pages_read_engagement` anyway);
+  `fetchProfile()` returns `followerCount: undefined`, identical in shape to `snapchat.ts`. A
+  second, independent bug was found and fixed in the same pass: `GRAPH_VERSION` was pinned to
+  `v19.0`, which Meta has since expired (v18/v19 now hard-error) — that alone would have broken
+  every Graph API call here regardless of the permissions question. Bumped to `v25.0`.
+  **Console-side progress made live this session**: the "Pages API" use case was added, and a
+  Login Configuration named "Facebook Reels verification" was created and saved with
+  `pages_show_list` (Configuration ID `1000436503032670`, already in `.env` as
+  `META_LOGIN_CONFIG_ID`). **Still needed before this works at all**: `META_CLIENT_ID`/
+  `META_CLIENT_SECRET` need setting to the same values as `INSTAGRAM_CLIENT_ID`/`SECRET` in both
+  `.env` and Vercel's Production env vars (redeploy after), and `pages_show_list` needs
+  submitting for App Review — there's already an **unrelated App Review submission "In Review"
+  for just `instagram_business_basic`** on this app (found live 2026-08-15, contradicting this
+  file's stale "Not submitted" note below — that note describes an earlier point in time), and
+  it's untested whether a second permission can be submitted while that one is still pending.
+  **Not yet verified against a real OAuth round trip** — `tsc --noEmit` and `npm run build` are
+  clean, but no curator has actually clicked "Connect" successfully yet.
 - **Setup checklist per provider** (none of this can be done on your behalf — each needs your
   own developer account):
   - **Google (YouTube)** — **done, see the finding below.** Self-serve, no App Review wait: create
@@ -569,48 +593,45 @@ what's always been true at the *application* step.
     Login App ID) into `.env` as `INSTAGRAM_CLIENT_ID`/`INSTAGRAM_CLIENT_SECRET` → for testing
     before App Review, add your own account under **App roles → Roles** as a Tester (must be a
     Business/Creator Instagram account) and accept the invite while logged in as that account.
-  - **Meta / Facebook Reels** — separate from Instagram above — **updated 2026-08-15, see the
-    correction finding above; the existing Meta app needs reconfiguring, not a from-scratch
-    app** (the existing `META_CLIENT_ID` app, App Review, and Business Verification/Portfolio
-    already done for it can all be reused):
-    1. In the App Dashboard, confirm the app is (or convert it to) a **Business type** app —
-       Facebook Login for Business's permissions aren't offered to Consumer-type apps at all,
-       regardless of use case. If the existing app can't be converted in place, a fresh
-       Business-type app may be required — check App Settings → Basic for an app type field
-       first before assuming a rebuild is needed.
-    2. Add the **Facebook Login for Business** product (distinct from plain "Facebook Login,"
-       which is what's added today and is the reason `pages_show_list`/`pages_read_engagement`
-       never appeared in the permission picker).
-    3. Under **Configurations** (left sidebar), create a Login Configuration: choose asset type
-       Page, select `pages_show_list` and `pages_read_engagement`, save it, and copy the
-       resulting **Configuration ID**.
-    4. Put that ID in `.env` / Vercel as `META_LOGIN_CONFIG_ID` (added 2026-08-15, alongside the
-       existing `META_CLIENT_ID`/`META_CLIENT_SECRET` — no new app credentials needed, same
-       app/secret as before).
-    5. Submit `pages_show_list`/`pages_read_engagement` for App Review through this
-       configuration (real business documents, hosted privacy policy, and a screencast of the
-       exact permission usage — same requirements as any Meta permission review; Business
-       Verification is already done for this app per the Instagram section, so that part
-       shouldn't need repeating).
-    6. Redirect URI stays `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` — no
-       code or route changes needed there, only `getAuthUrl()` in `meta.ts` changed (config_id
-       instead of scope).
+  - **Meta / Facebook Reels** — **updated 2026-08-15: this is the same app as Instagram
+    (`2796525164063265`), not a separate one — see the correction finding above.** What's
+    already done live in the console this session, and what's still outstanding:
+    1. ~~Confirm/convert to Business type app~~ **N/A** — the app already had Facebook Login for
+       Business as a product before this session touched it, so it's already whatever type that
+       requires.
+    2. ~~Add Facebook Login for Business~~ **Already present.**
+    3. ~~Add the "Pages API" use case~~ **Done 2026-08-15** (Use Cases → Add use cases → Content
+       management → "Manage everything on your Page") — this is what unlocked `pages_show_list`
+       as a selectable permission; it wasn't enough to unlock `pages_read_engagement` too (see
+       the correction finding for why that was abandoned).
+    4. ~~Create a Login Configuration~~ **Done 2026-08-15** — named "Facebook Reels
+       verification", User access token, permission `pages_show_list` only, Configuration ID
+       `1000436503032670`, already in `.env` as `META_LOGIN_CONFIG_ID`.
+    5. **Still needed:** set `META_CLIENT_ID`/`META_CLIENT_SECRET` in `.env` and in Vercel's
+       Production env vars to the **same values already used for
+       `INSTAGRAM_CLIENT_ID`/`INSTAGRAM_CLIENT_SECRET`** (App ID `2796525164063265` and its
+       secret from Settings → Basic) — this app was never given separate credentials for
+       Facebook Reels, and doesn't need them. Redeploy after setting them.
+    6. **Still needed:** submit `pages_show_list` for App Review. There's already an unrelated
+       submission "In Review" for `instagram_business_basic` on this app — untested whether a
+       second permission can be added to that same submission or needs its own; check the Review
+       → App Review page for current state before assuming either way.
+    7. Redirect URI stays `{NEXT_PUBLIC_APP_URL}/api/curator/connections/meta/callback` — no
+       code or route changes needed there, only `getAuthUrl()`/`firstPage()`/`fetchProfile()` in
+       `meta.ts` changed (config_id instead of scope, no follower count requested).
   - All providers need a **real public HTTPS domain** for the redirect URI before submitting for
     review — the app is now live at `https://outroll.me` (see "Stripe test-mode setup" and the
     deploy history above), so that requirement is satisfied.
-  - **Meta/Facebook Reels app**: a real `META_CLIENT_ID`/`META_CLIENT_SECRET` pair is configured
-    in production (app created via Meta's "Use cases → Facebook Login" flow, category "Business
-    and pages", connected to a real Business Portfolio). The redirect round trip itself works —
-    verified live against `outroll.me`, reaching Facebook's real login screen with the correct
-    `redirect_uri`. `pages_show_list`/`pages_read_engagement` weren't addable to this app under
-    that plain Facebook Login use case (confirmed via both the "Add more use cases" picker and a
-    direct search in App Review → Permissions and Features — neither surfaces them) — **as of
-    2026-08-15 this is understood to be because the app needs Facebook Login for Business
-    specifically, not because the permissions are dead; see the correction finding and updated
-    checklist above.** Code (`meta.ts`) now targets that flow (`config_id`, `META_LOGIN_CONFIG_ID`,
-    bumped to Graph API `v25.0`), but the console-side reconfiguration (Business-type app, Login
-    Configuration, new App Review submission) hasn't been done yet — this app is still not
-    functional for Facebook Reels until that happens.
+  - **Meta/Facebook Reels app**: **as of 2026-08-15, this is confirmed to be the same app as
+    Instagram (`2796525164063265`)** — see the correction finding above; the earlier claim of a
+    separate `META_CLIENT_ID` app with its own real production credentials was wrong (there was
+    only ever this one app, and its `META_CLIENT_ID`/`SECRET` were never actually set to
+    anything real — `.env` had them as `replace_me` all along). Facebook Login for Business, the
+    Pages API use case, and a Login Configuration (`pages_show_list` only, ID
+    `1000436503032670`) are now set up on it. Not yet functional: `META_CLIENT_ID`/`SECRET` still
+    need to be set (to Instagram's real values) in `.env` and Vercel Production, and
+    `pages_show_list` needs an App Review submission. No follower count will ever come from this
+    connection — see the correction finding for why.
   - **Instagram**: fully configured and verified. Real `INSTAGRAM_CLIENT_ID`/
     `INSTAGRAM_CLIENT_SECRET` are set in production, from a dedicated app (App ID
     `2796525164063265` — corrected 2026-08-11; an earlier version of this doc had
@@ -872,17 +893,21 @@ Next priorities after that, in rough priority order:
    restricted (see the Snapchat bullet under "Social account verification" for why, including a
    real architectural difference from how Meta's Tester system works). Check the Setup tab in the
    Snap Developer Portal for review status; nothing else needs to change once it's approved.
-4. **Facebook Reels verification — code fixed 2026-08-15, console setup still pending.** The
-   prior "these permissions are deprecated" diagnosis was wrong (see the correction finding under
-   "Social account verification" above) — `pages_show_list`/`pages_read_engagement` are alive,
-   just gated behind Facebook Login for Business rather than plain Facebook Login. `meta.ts` now
-   implements that flow (`config_id` via a new `META_LOGIN_CONFIG_ID` env var) and a separately-
-   found expired Graph API version (`v19.0` → `v25.0`) was fixed in the same pass; `tsc --noEmit`
-   is clean. **Not yet functional** — needs console-side work only the account holder can do:
-   convert/confirm the existing Meta app as Business type, add Facebook Login for Business, create
-   a Login Configuration for the two permissions, copy its `config_id` into `.env`/Vercel, and
-   submit for App Review. See the updated numbered checklist under the Facebook Reels setup
-   section above for the exact steps.
+4. **Facebook Reels verification — mostly done 2026-08-15, two steps left.** The prior "these
+   permissions are deprecated" diagnosis was wrong, and so was the prior claim of a separate Meta
+   app — this is the same app as Instagram (`2796525164063265`), see the correction finding under
+   "Social account verification" above. Live in the console this session: added the Pages API use
+   case, created a Login Configuration (`pages_show_list` only — `pages_read_engagement` turned
+   out to be unobtainable for a personal-login flow, so Facebook Reels ships without a follower
+   count, same as Snapchat). `meta.ts` now implements the `config_id` flow and a separately-found
+   expired Graph API version (`v19.0` → `v25.0`) was fixed in the same pass; `tsc --noEmit` and
+   `npm run build` are clean. **Not yet functional — two things left, both console-only:**
+   (1) set `META_CLIENT_ID`/`META_CLIENT_SECRET` in `.env` and Vercel Production to the same
+   values as `INSTAGRAM_CLIENT_ID`/`SECRET` (this app never had separate Facebook Reels
+   credentials) and redeploy; (2) submit `pages_show_list` for App Review — there's already an
+   unrelated review in progress for `instagram_business_basic` on this app, untested whether a
+   second permission can be added to it. See the updated numbered checklist under the Facebook
+   Reels setup section above for exact detail.
 5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
    `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
    Quick to finish: sign up at sentry.io, create a Next.js project, paste the DSN in.
