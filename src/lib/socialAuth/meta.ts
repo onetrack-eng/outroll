@@ -79,6 +79,10 @@ async function firstPage(accessToken: string) {
     throw new Error(`Meta pages lookup failed: ${res.status} ${await res.text()}`);
   }
   const data = await res.json();
+  // TEMP DEBUG 2026-08-15: diagnosing why /me/accounts returns no pages for a Business-Login
+  // asset-picker grant that Facebook's own consent screen confirmed included a Page. Remove
+  // once root-caused.
+  console.log('[meta debug] /me/accounts raw response:', JSON.stringify(data));
   const page = data.data?.[0];
   if (!page) {
     throw new Error('No Facebook Page found on this account. Connect a Page to verify.');
