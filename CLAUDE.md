@@ -387,6 +387,73 @@ what's always been true at the *application* step.
     The Demo Video upload silently hung once (spinner forever, no error, nothing attached) on a
     first attempt — resolved by refreshing the page and re-uploading; the file itself (24s, 24MB)
     was well under Snap's 100MB limit, so that wasn't the cause, likely just a stalled connection.
+- **TikTok (`src/lib/socialAuth/tiktok.ts`) — Login Kit added 2026-08-14, verified end-to-end
+  against Sandbox, submitted for Production App Review, not yet approved.** TikTok's app model
+  splits into Production (a "Draft" you edit then submit for review) and Sandbox (an isolated test
+  app, "Local dev" here) — similar two-tier split to Snapchat's Staging/Production, but TikTok's
+  version has sharper edges, documented below.
+  - **A real TikTok for Developers org and app exist**: org "OneTrack Media Inc." (org ID
+    `7673967819578557460`), app "Outroll" (app ID `7673999188317653013`, type "Other"). Both the
+    Production and Sandbox versions have Login Kit added, redirect URIs registered, and scopes
+    configured.
+  - **Real finding: `username` requires the `user.info.profile` scope, not `user.info.basic`.**
+    The original build (and this file's setup checklist) only requested `user.info.basic` +
+    `user.info.stats`. That's enough for `open_id`/`avatar_url`/`display_name` and the stats
+    fields, but `fetchProfile()` also requests `username` (used as the connection's handle, same
+    role Instagram's `username` plays) — and TikTok's Get User Info endpoint returned
+    `scope_not_authorized` for it under those two scopes alone. Confirmed against TikTok's own Get
+    User Info docs: `username` is gated behind `user.info.profile` specifically. Fixed in
+    `getAuthUrl()` (now requests `user.info.basic,user.info.profile,user.info.stats`) and in both
+    the Sandbox and Production scope configs in the portal. This was a real, load-bearing bug —
+    every connection attempt failed at the final profile-fetch step until this was found and
+    fixed, even though the OAuth redirect/consent/token-exchange steps all completed successfully.
+  - **TikTok's Sandbox rejects any loopback redirect URI outright — `localhost` and `127.0.0.1`
+    both fail with "Enter a valid redirect uri (localhost is not supported)."** This is stricter
+    than Snapchat (which allows `http://localhost:3000` as a Trusted Origin on Staging) and
+    stricter than what the original Production-only-needs-HTTPS assumption implied — Sandbox needs
+    a real HTTPS domain too. Worked around by creating a throwaway git branch
+    (`tiktok-sandbox-preview`) and pushing it to get a real Vercel Preview deployment URL
+    (`outroll-git-tiktok-sandbox-preview-one-track-dev.vercel.app`), then pointing Sandbox's
+    redirect URI and a branch-scoped `NEXT_PUBLIC_APP_URL`/`TIKTOK_CLIENT_KEY`/
+    `TIKTOK_CLIENT_SECRET` (Sandbox values) at that Preview environment/branch combo in Vercel's
+    env var settings. This is the pattern to reuse for any future provider that rejects loopback
+    redirect URIs during local testing — no local tunnel needed, just a disposable branch.
+  - **A generic npm `ngrok` package was tried first as a tunnel alternative and abandoned —
+    Windows Defender flagged its downloaded binaries as trojans during install.** Uninstalled
+    immediately, never executed. Unclear if false positive or real, and not worth relitigating —
+    the Vercel Preview approach above works just as well with zero new local binaries. If a tunnel
+    is ever genuinely needed, get `ngrok` from the official `ngrok.com` installer, not the
+    community npm wrapper package.
+  - **Real gotcha: the Production Draft's config from the prior session had silently not saved at
+    all.** TikTok's editor needs an explicit **Save** click (Sandbox uses "Apply changes",
+    Production uses "Save" — separate buttons, separate mechanisms) — typing into every field
+    without ever clicking it leaves the draft exactly as it started. Found this by simply loading
+    the Production Draft page fresh at the start of a new session: the app icon, category,
+    description, Login Kit, and scopes were all empty, despite being fully described as configured
+    in this file previously. Recovered via the portal's **Import → Import from Sandbox → Local
+    dev** feature (replaces Production Draft's App details/Products/Scopes with Sandbox's), then
+    manually corrected the two fields that legitimately need different values between the two
+    (Redirect URI and Web/Desktop URL: `outroll.me`, not the Sandbox's Preview-deployment URL).
+    Confirmed fixed this time by reloading the page after clicking Save and seeing every field —
+    including the icon — still populated.
+  - **Verified fully end-to-end against Sandbox** (via the Vercel Preview workaround above): logged
+    in as curator "onetrack" on the Preview deployment, clicked Connect next to TikTok, reached
+    TikTok's real consent screen ("Outroll (Sandbox) wants to access your TikTok account," account
+    `onetrackm`), authorized, redirected back to `/curator/dashboard/listings?connected=TIKTOK`
+    with a "TikTok connected and verified" banner, and the TikTok row showing `@onetrackm ·
+    269,339 followers · Verified` — real verified follower count and username, not self-reported.
+  - **Production App Review submitted 2026-08-14 — status "In Review," not yet approved.**
+    Required, all now done: App icon, Category ("Music"), Description, Terms/Privacy URLs
+    (verified via the same URL-prefix signature-file method as the Snapchat/domain-ownership file,
+    already committed), a required "how each product/scope is used" writeup (974/1000 chars), and
+    a demo video (`tiktok capture 1.mp4`) showing the exact Sandbox flow described above. Real
+    Production Client key/secret (`awma02ip1d6jneny` / real secret in Vercel) are now set as
+    Vercel **Production**-scoped env vars (redeployed so they're live) — but per the same
+    architecture as Snapchat, **the Production client will not authorize anyone, including
+    whitelisted testers, until TikTok approves this review** — Sandbox's Target Users allowlist
+    doesn't apply to Production at all; Production is simply inert pre-approval. Check the Setup
+    tab in the TikTok Developer Portal for review status; nothing else needs to change once it's
+    approved.
 - **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
   deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
   original build's Dec 2024 "Basic Display API killed" note was already aware something had
@@ -427,10 +494,14 @@ what's always been true at the *application* step.
     scopes → redirect URI `{NEXT_PUBLIC_APP_URL}/api/curator/connections/snapchat/callback` →
     put the client ID/secret in `.env` as `SNAPCHAT_CLIENT_ID`/`SNAPCHAT_CLIENT_SECRET`.
   - **TikTok** — TikTok for Developers account → create an app → add Login Kit → request the
-    `user.info.basic` and `user.info.stats` scopes → this needs App Review (real product,
-    real privacy policy, live domain) before scopes work for non-test users → redirect URI
+    `user.info.basic`, `user.info.profile`, and `user.info.stats` scopes (`user.info.profile` is
+    easy to miss — it's the one that actually gates the `username` field, not `user.info.basic`,
+    see the finding below) → this needs App Review (real product, real privacy policy, live
+    domain) before scopes work for non-test users → redirect URI
     `{NEXT_PUBLIC_APP_URL}/api/curator/connections/tiktok/callback` →
-    `TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET`.
+    `TIKTOK_CLIENT_KEY`/`TIKTOK_CLIENT_SECRET`. Note Sandbox testing needs a real HTTPS domain too
+    (rejects `localhost`/`127.0.0.1` outright) — see the Vercel Preview workaround in the finding
+    below if testing locally.
   - **Instagram** — Meta Developer account → create an app (any type; a Business-portfolio
     connection isn't required to reach this screen, though you'll need one eventually for App
     Review) → in the app's left sidebar, **Instagram → API setup with Instagram Login** (not
@@ -510,11 +581,12 @@ what's always been true at the *application* step.
       Development-mode restriction, not specific to this app) — confirmed 2026-08-11 that
       `@onetrack` is already an accepted (not just invited) Instagram Tester, so real-account
       testing works today even though public App Review hasn't landed.
-  - `GOOGLE_CLIENT_ID`/`SECRET` and `TIKTOK_CLIENT_KEY`/`SECRET` are still `replace_me`
-    placeholders — Google/YouTube is self-serve with no App Review wait, unlike TikTok, so it's
-    a good next target. Snapchat's OAuth mechanics are verified against Staging (see the Snapchat
-    bullet above) but it's not yet live in Production — Production credentials + Vercel env vars
-    + Snap App Review submission are still needed before real curators on `outroll.me` can connect.
+  - `GOOGLE_CLIENT_ID`/`SECRET` are still `replace_me` placeholders — Google/YouTube is self-serve
+    with no App Review wait, unlike TikTok or Snapchat, so it's a good next target. Snapchat's and
+    TikTok's OAuth mechanics are both verified end-to-end (Snapchat against Staging, TikTok
+    against Sandbox — see their respective bullets above) and both have real Production credentials
+    live in Vercel, but neither works for real curators on `outroll.me` yet — both are awaiting
+    their respective platform's App Review approval.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -727,8 +799,21 @@ Next priorities after that, in rough priority order:
 5. **Sentry needs a real project** — `NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT`/
    `SENTRY_AUTH_TOKEN` are still `replace_me` placeholders (see the Architecture section above).
    Quick to finish: sign up at sentry.io, create a Next.js project, paste the DSN in.
-6. Google/YouTube and TikTok OAuth still need real credentials configured (`replace_me`
-   placeholders) — Google is self-serve with no review wait, good next target.
+6. ~~TikTok OAuth still needs real credentials configured.~~ **Done as of 2026-08-14, pending
+   TikTok's approval.** Same shape as the Snapchat item above: OAuth mechanics verified fully
+   end-to-end against Sandbox (via a Vercel Preview deployment, since TikTok's Sandbox rejects
+   `localhost` redirect URIs), a real scope bug found and fixed along the way
+   (`user.info.profile` was missing, so `username` lookups failed with `scope_not_authorized`),
+   Production Client key/secret set in Vercel's production env (redeployed), and App version
+   submitted for TikTok App Review (status: "In Review" as of 2026-08-14) — required an app icon,
+   category, description, ToS/Privacy URLs, a usage writeup, and a demo video, all now done. See
+   the TikTok bullet under "Social account verification" for the full story, including a real
+   gotcha where the prior session's Production Draft edits had silently never saved. **TikTok
+   connect will not work for real curators on `outroll.me` until TikTok approves this
+   submission** — same pre-approval-inert architecture as Snapchat's Production client. Google/
+   YouTube OAuth still needs real credentials configured (`replace_me` placeholders) — it's
+   self-serve with no review wait, so it's the natural next target now that both Snapchat and
+   TikTok are submitted and just waiting on approval.
 7. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
