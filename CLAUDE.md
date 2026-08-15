@@ -454,6 +454,52 @@ what's always been true at the *application* step.
     doesn't apply to Production at all; Production is simply inert pre-approval. Check the Setup
     tab in the TikTok Developer Portal for review status; nothing else needs to change once it's
     approved.
+- **Google (YouTube, `src/lib/socialAuth/google.ts`) — set up and verified end-to-end 2026-08-14,
+  live in Production the same day.** By far the simplest of the four gated platforms: no App
+  Review wait at all (unlike Meta/Snapchat/TikTok), and the code (`google.ts` + the
+  `youtube_shorts` callback route) was already fully written from the original scaffold — this
+  session was purely credential/portal setup, no code changes.
+  - A real Google Cloud project "Outroll" (project ID `outroll-505601`) was created under the
+    `onetrackmindofficial@gmail.com` account, with the OAuth consent screen ("Google Auth
+    Platform") configured: External user type, app name "Outroll", support email
+    `onetrackmindofficial@gmail.com`. The YouTube Data API v3 was enabled for the project.
+  - A Web application OAuth 2.0 Client was created with both redirect URIs registered up front —
+    `http://localhost:3000/api/curator/connections/youtube_shorts/callback` and
+    `https://outroll.me/api/curator/connections/youtube_shorts/callback` — since Google, unlike
+    Snapchat/TikTok, doesn't need a separate Sandbox/Staging app or a different client per
+    environment; one client's redirect URI allowlist covers both. Real
+    `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` are in `.env` and set as Vercel **Production**-scoped
+    env vars (redeployed so they're live).
+  - **Verified fully end-to-end twice**: once locally (`localhost:3000`, curator "onetrack",
+    account `onetrackmind` → picked the "OneTrackMind" YouTube brand channel from Google's account
+    chooser, which also listed an unrelated "KILLY" channel the same Google account manages —
+    Google's account chooser surfaces every brand account, not just the one you want, so picking
+    the right one matters) — connected with `@OneTrackMind · 241,000 followers · Verified`. Second
+    verification pending against Production (`outroll.me`) since the Vercel redeploy just
+    completed with real credentials.
+  - **Real gotcha, same shape as Meta's Testers / Snapchat's Demo Users / TikTok's Target Users**:
+    a freshly-created Google OAuth consent screen starts in **Testing** mode, which hard-blocks
+    every Google account except ones explicitly added as test users (capped at 100 for the
+    lifetime of the project) — `onetrackmindofficial@gmail.com` was added as a test user to make
+    local/Production verification possible at all.
+  - **Published to Production the same session** (Audience → Publish app) once verification
+    passed, so real curators (any Google account, not just test users) can connect today — no
+    waiting on Google, unlike the other three platforms. Two things worth knowing about what
+    "published" actually means here, since it's a materially different model from Meta/Snapchat/
+    TikTok's binary approved/not-approved gate:
+    - `youtube.readonly` is classified by Google as a **sensitive** scope (not **restricted**) —
+      publishing with a sensitive scope works immediately with no formal review gate, unlike
+      TikTok/Snapchat/Meta where Production is fully inert until a human at the platform approves
+      it. The tradeoff: every non-test-user sees Google's **"Google hasn't verified this app"**
+      interstitial warning before the consent screen (an extra "Continue" click past a scary
+      warning, not a hard block) until formal verification is completed — not yet pursued, since
+      it's optional at this scope/user-count and mainly cosmetic.
+    - The **100-user cap carries over from Testing to Production** for unverified apps requesting
+      sensitive/restricted scopes — this is a hard **lifetime** cap on distinct Google accounts
+      that have ever authorized the app (visible on the Audience page as "N user / 100 user cap"),
+      not a rolling/resettable limit. Fine at current volume; worth formal verification
+      (`Verification Center` in the Google Auth Platform console) before curator count approaches
+      100, since exceeding the cap blocks *new* authorizations entirely, not just adds a warning.
 - **2026-08-11 finding: `pages_show_list`/`pages_read_engagement`/`instagram_basic` are
   deprecated and no longer requestable at all** (Meta deprecated them January 27, 2025 — the
   original build's Dec 2024 "Basic Display API killed" note was already aware something had
@@ -484,10 +530,13 @@ what's always been true at the *application* step.
   verification.
 - **Setup checklist per provider** (none of this can be done on your behalf — each needs your
   own developer account):
-  - **Google (YouTube)** — self-serve. Create a Google Cloud project → OAuth consent screen →
-    OAuth 2.0 Client (Web application) → enable the YouTube Data API v3 → add
-    `{NEXT_PUBLIC_APP_URL}/api/curator/connections/youtube_shorts/callback` as an authorized
-    redirect URI → put the client ID/secret in `.env` as `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`.
+  - **Google (YouTube)** — **done, see the finding below.** Self-serve, no App Review wait: create
+    a Google Cloud project → OAuth consent screen → OAuth 2.0 Client (Web application) → enable
+    the YouTube Data API v3 → add both `http://localhost:3000/...` and
+    `https://outroll.me/api/curator/connections/youtube_shorts/callback` as authorized redirect
+    URIs on the one client → put the client ID/secret in `.env` as
+    `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` → add your own account as a test user → once
+    verified, **Publish app** on the Audience page so real (non-test-user) curators can connect.
   - **Snapchat** — self-serve, no App Review wait (confirmed against Snap's current docs, see the
     finding above). Create an account at the Snap Developer Portal (`developers.snap.com`) →
     create an app → add Login Kit → request the `user.display_name` and `user.external_id`
@@ -581,12 +630,15 @@ what's always been true at the *application* step.
       Development-mode restriction, not specific to this app) — confirmed 2026-08-11 that
       `@onetrack` is already an accepted (not just invited) Instagram Tester, so real-account
       testing works today even though public App Review hasn't landed.
-  - `GOOGLE_CLIENT_ID`/`SECRET` are still `replace_me` placeholders — Google/YouTube is self-serve
-    with no App Review wait, unlike TikTok or Snapchat, so it's a good next target. Snapchat's and
+  - **Google/YouTube is fully done and live** — real `GOOGLE_CLIENT_ID`/`SECRET` are set in
+    Vercel Production, verified end-to-end, and the OAuth consent screen is published, so real
+    curators can connect on `outroll.me` today (see the Google bullet above for the full story,
+    including the 100-user lifetime cap that applies until formal verification). Snapchat's and
     TikTok's OAuth mechanics are both verified end-to-end (Snapchat against Staging, TikTok
     against Sandbox — see their respective bullets above) and both have real Production credentials
     live in Vercel, but neither works for real curators on `outroll.me` yet — both are awaiting
-    their respective platform's App Review approval.
+    their respective platform's App Review approval. Of the four gated platforms, Google is the
+    only one that's actually functional for real users right now.
 - **Known simplifications specific to this feature** (not covered by the numbered list below):
   - OAuth tokens are stored in plaintext in `SocialConnection.accessToken`/`refreshToken` (and,
     transiently, in `CuratorApplication.verifiedAccessToken`/`verifiedRefreshToken` while an
@@ -810,16 +862,23 @@ Next priorities after that, in rough priority order:
    the TikTok bullet under "Social account verification" for the full story, including a real
    gotcha where the prior session's Production Draft edits had silently never saved. **TikTok
    connect will not work for real curators on `outroll.me` until TikTok approves this
-   submission** — same pre-approval-inert architecture as Snapchat's Production client. Google/
-   YouTube OAuth still needs real credentials configured (`replace_me` placeholders) — it's
-   self-serve with no review wait, so it's the natural next target now that both Snapchat and
-   TikTok are submitted and just waiting on approval.
-7. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
+   submission** — same pre-approval-inert architecture as Snapchat's Production client.
+7. ~~Google/YouTube OAuth still needs real credentials configured.~~ **Done as of 2026-08-14, live
+   in Production.** Unlike the other three platforms, Google had no App Review wait at all: a
+   Google Cloud project + OAuth consent screen + client were set up, `GOOGLE_CLIENT_ID`/`SECRET`
+   are real and set in Vercel Production (redeployed), verified end-to-end both locally and
+   against Production, and the consent screen was published the same session — so **Google is the
+   only one of the four gated platforms that actually works for real curators on `outroll.me`
+   right now.** See the Google bullet under "Social account verification" for the full setup
+   story and a real constraint worth knowing: the app is capped at 100 total distinct users for
+   the lifetime of the project until formal Google verification is completed (`Verification
+   Center` in the Google Auth Platform console) — worth doing before curator count gets close.
+9. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
-8. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
-   yet monitored or tested against.
-9. **No rate limiting or bot protection anywhere** — the public application form, checkout, and
-   dispute-filing routes are all wide open. Fine at current volume, not fine at scale.
-10. Then continue down the rest of both "Known simplifications" lists in priority order (curator
+10. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
+    yet monitored or tested against.
+11. **No rate limiting or bot protection anywhere** — the public application form, checkout, and
+    dispute-filing routes are all wide open. Fine at current volume, not fine at scale.
+12. Then continue down the rest of both "Known simplifications" lists in priority order (curator
     username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
