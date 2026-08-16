@@ -872,10 +872,23 @@ platform later is a one-line change in that provider's module.
    matters.
 6. **No rate limiting or abuse protection** anywhere — public application form, checkout,
    dispute filing are all wide open. Fine for an MVP behind low traffic, not fine at scale.
-7. **Curator application `proposedUsername` isn't reserved.** Someone could apply, get approved,
-   and find their desired username taken by a curator who signed up in the meantime. Signup
-   already re-checks uniqueness and errors cleanly, but there's no reservation — worth deciding
-   if that UX gap matters.
+7. ~~**Curator application `proposedUsername` isn't reserved.**~~ **Fixed 2026-08-16.** New
+   `src/lib/curatorUsername.ts` (`isUsernameAvailable(username, excludeApplicationId?)`) checks
+   both real `Curator.username` rows and other applicants' live reservations — any
+   `CuratorApplication` with the same `proposedUsername` that's `PENDING` or `APPROVED` and
+   hasn't completed signup yet (`signupTokenUsed: false`) counts as taken. `DECLINED`
+   applications and ones that already signed up don't hold a reservation (released or superseded
+   by the real Curator row). Wired into two places: `/api/curator/apply/start-verification`
+   rejects a taken/reserved username immediately with a 409, before even creating the draft
+   application or sending the applicant into Instagram's OAuth dialog (fails fast, not days
+   later); `/api/curator/signup` uses the same check in place of its old bare
+   `Curator.findUnique`, excluding the applicant's own application id so re-entering the exact
+   username they applied with is still allowed. Verified with new unit tests
+   (`src/lib/curatorUsername.test.ts` plus new route tests for both endpoints) and a real run
+   against the live database walking through the full lifecycle: available before any
+   application exists → reserved once a `PENDING` application takes it (unavailable to a new
+   applicant, still available to the reserving application itself) → still reserved once
+   `APPROVED` → released the moment `signupTokenUsed` flips to `true`.
 8. **Email templates are inline HTML strings**, not a proper templating system — fine for this
    volume, but if the email list grows, consider `react-email` (already Resend's recommended
    pairing).
@@ -904,6 +917,7 @@ platform later is a one-line change in that provider's module.
 | Legal pages (privacy/terms/data deletion) | `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/app/data-deletion/page.tsx` (all linked from `Footer.tsx`) — the latter two exist specifically to satisfy Meta App Review's required-URL checklist |
 | Rate limiting on public endpoints | `src/lib/rateLimit.ts`, `RATE_LIMITS` in `src/lib/constants.ts`, `RateLimitHit` in `prisma/schema.prisma` |
 | Stuck/abandoned checkout cleanup | `src/lib/checkoutCleanup.ts` (`abortCampaign`, shared with `/api/checkout/abort`), `sweepStuckCampaigns` in `src/lib/deadlineSweep.ts`, `Campaign.finalizedAt` in `prisma/schema.prisma` |
+| Curator username reservation | `src/lib/curatorUsername.ts` (`isUsernameAvailable`), used by `/api/curator/apply/start-verification` and `/api/curator/signup` |
 
 ## Suggested next session
 
@@ -1170,8 +1184,9 @@ Next priorities after that, in rough priority order:
       migration itself had, in this particular case, already reached production regardless
       (`prisma migrate dev` run locally the same session wrote directly to it) — but the build
       script fix is what makes this safe for every migration from here on, not just this one.
-12. Then continue down the rest of both "Known simplifications" lists in priority order (curator
-    username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
+12. Then continue down the rest of both "Known simplifications" lists in priority order
+    (~~curator username reservation~~ **done 2026-08-16, see item 7 above** — no token refresh
+    job, no periodic profile-photo refresh, etc.)
 
 <!-- BEGIN:nextjs-agent-rules -->
 

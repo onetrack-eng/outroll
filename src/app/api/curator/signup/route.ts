@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { hashPassword, setCuratorSession } from '@/lib/auth';
 import { curatorSignupSchema } from '@/lib/validations';
 import { isGatedPlatform } from '@/lib/constants';
+import { isUsernameAvailable } from '@/lib/curatorUsername';
 
 // Completes curator signup after admin approval — sets a password and creates the login-able
 // Curator record. Listings themselves are created afterward from the dashboard, once each
@@ -21,8 +22,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'This signup link is invalid or already used.' }, { status: 400 });
   }
 
-  const usernameTaken = await prisma.curator.findUnique({ where: { username } });
-  if (usernameTaken) {
+  // Also checks other applicants' live reservations, not just real Curator rows (see
+  // isUsernameAvailable) — excludes this application itself, since re-entering the same
+  // proposedUsername they applied with is exactly the case this exists to allow.
+  if (!(await isUsernameAvailable(username, application.id))) {
     return NextResponse.json({ error: 'That username is already taken.' }, { status: 409 });
   }
 

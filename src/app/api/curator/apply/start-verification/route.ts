@@ -6,6 +6,7 @@ import { createConnectState } from '@/lib/socialAuth/state';
 import { generateCodeVerifier } from '@/lib/socialAuth/pkce';
 import { checkRateLimit, clientIp } from '@/lib/rateLimit';
 import { RATE_LIMITS } from '@/lib/constants';
+import { isUsernameAvailable } from '@/lib/curatorUsername';
 
 // Every curator application requires connecting Instagram via OAuth — no self-reported
 // follower count, no platform choice. This creates a pending draft CuratorApplication and
@@ -23,6 +24,12 @@ export async function POST(req: NextRequest) {
   const parsed = applicationDraftSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? 'Invalid application' }, { status: 400 });
+  }
+
+  // Checked before creating anything (or sending the applicant into Instagram's OAuth dialog)
+  // so a taken/reserved username fails fast with a clear message, not days later at signup.
+  if (!(await isUsernameAvailable(parsed.data.proposedUsername))) {
+    return NextResponse.json({ error: 'That username is already taken.' }, { status: 409 });
   }
 
   const application = await prisma.curatorApplication.create({
