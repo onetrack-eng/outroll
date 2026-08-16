@@ -1084,6 +1084,18 @@ Next priorities after that, in rough priority order:
    `.env` had at some earlier point. Updated `DATABASE_URL` in `.env` to the current hostname and
    confirmed `npm run dev` now returns 200 on the homepage. Production was never affected — its
    separate Vercel-side env var already had the correct current value.
+   - **Confirmed 2026-08-16: local dev and production share the exact same Neon database, not
+     just the same connection details by convention.** There is only one project and one branch
+     on this Neon account (`neon-camel-plank` / `wispy-cherry-80532350`, branch `main`) — there
+     never was a separate dev database. Proof: the `RateLimitHit` migration (see the rate
+     limiting item below) was created and applied locally via `prisma migrate dev`, and the very
+     next Vercel deploy's build log showed `prisma migrate deploy` reporting "No pending
+     migrations to apply" — meaning production was already in sync before that deploy ever ran,
+     because `npm run dev` locally had already written to the real database. Practical
+     consequence: any local testing (curator signups, campaigns, rate-limit hits, etc.) creates
+     real rows in the same database `outroll.me` serves from. Worth keeping in mind before
+     assuming local experimentation is isolated — it isn't. Not something to fix as part of this
+     session's work; flagging so it doesn't get rediscovered the hard way.
 9. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
@@ -1112,6 +1124,20 @@ Next priorities after that, in rough priority order:
     `count: 1` for the other). **Known simplification, not built**: no cleanup job for old
     `RateLimitHit` rows — the table grows unboundedly with request volume. Fine at current
     traffic; worth pruning (e.g. from the existing daily deadline-sweep cron) if it ever matters.
+    - **Real deploy-pipeline gap found and fixed the same session, before pushing**: nothing was
+      running `prisma migrate deploy` against production — `postinstall` only ran
+      `prisma generate` (regenerates the client, never touches the actual schema). Pushing the
+      `RateLimitHit` migration as-is would have deployed code referencing a table that didn't
+      exist in production, breaking every checkout/apply/dispute request immediately. Fixed by
+      changing the `build` script to `"prisma migrate deploy && next build"` (`package.json`) so
+      every future migration reaches production automatically as part of the normal deploy, not
+      just this one. Verified locally (`npm run build` completes cleanly with the migration step
+      included, reports "No pending migrations to apply" when already in sync) and confirmed live
+      in the actual Vercel build log after pushing. This was caught and fixed *before* pushing —
+      see the note above about local dev and production sharing one database for why the
+      migration itself had, in this particular case, already reached production regardless
+      (`prisma migrate dev` run locally the same session wrote directly to it) — but the build
+      script fix is what makes this safe for every migration from here on, not just this one.
 12. Then continue down the rest of both "Known simplifications" lists in priority order (curator
     username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
 
