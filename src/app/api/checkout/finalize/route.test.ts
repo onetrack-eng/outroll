@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { campaignFindUnique, holdFindMany } = vi.hoisted(() => ({
+const { campaignFindUnique, holdFindMany, rateLimitHitUpsert } = vi.hoisted(() => ({
   campaignFindUnique: vi.fn(),
   holdFindMany: vi.fn(),
+  rateLimitHitUpsert: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
     campaign: { findUnique: campaignFindUnique },
     hold: { findMany: holdFindMany },
+    rateLimitHit: { upsert: rateLimitHitUpsert },
   },
 }));
 
@@ -31,7 +33,7 @@ vi.mock('@/lib/resend', () => ({ sendMagicLinkEmail, sendCuratorNewSubmissionEma
 const { POST } = await import('./route');
 
 function fakeRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  return { json: async () => body, headers: { get: () => null } } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -49,6 +51,8 @@ beforeEach(() => {
     artistName: 'Test Artist',
     magicLinkToken: 'tok',
   });
+  rateLimitHitUpsert.mockReset();
+  rateLimitHitUpsert.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/checkout/finalize', () => {

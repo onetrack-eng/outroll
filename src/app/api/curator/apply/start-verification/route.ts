@@ -4,6 +4,8 @@ import { applicationDraftSchema } from '@/lib/validations';
 import { getAuthUrl } from '@/lib/socialAuth';
 import { createConnectState } from '@/lib/socialAuth/state';
 import { generateCodeVerifier } from '@/lib/socialAuth/pkce';
+import { checkRateLimit, clientIp } from '@/lib/rateLimit';
+import { RATE_LIMITS } from '@/lib/constants';
 
 // Every curator application requires connecting Instagram via OAuth — no self-reported
 // follower count, no platform choice. This creates a pending draft CuratorApplication and
@@ -12,6 +14,11 @@ import { generateCodeVerifier } from '@/lib/socialAuth/pkce';
 // (see ConnectState in state.ts). The draft stays invisible to admin (oauthPending: true) until
 // the callback fills in the verified data — see completeConnection.ts and AdminApplicationsPage.
 export async function POST(req: NextRequest) {
+  const allowed = await checkRateLimit(`apply:${clientIp(req)}`, RATE_LIMITS.APPLY.limit, RATE_LIMITS.APPLY.windowMs);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many applications from this connection. Please try again later.' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = applicationDraftSchema.safeParse(body);
   if (!parsed.success) {

@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import { stripe } from '@/lib/stripe';
 import { magicLinkUrl } from '@/lib/magicLink';
 import { sendMagicLinkEmail, sendCuratorNewSubmissionEmail } from '@/lib/resend';
+import { RATE_LIMITS } from '@/lib/constants';
+import { checkRateLimit, clientIp } from '@/lib/rateLimit';
 
 // Step 3 of checkout: called once the client has sequentially confirmed every curator's
 // PaymentIntent (including any 3D Secure challenge along the way — see
@@ -10,6 +12,11 @@ import { sendMagicLinkEmail, sendCuratorNewSubmissionEmail } from '@/lib/resend'
 // PaymentIntent is re-checked directly against Stripe before anything is sent, so a campaign
 // whose payment isn't actually fully authorized can never trigger a "campaign submitted" email.
 export async function POST(req: NextRequest) {
+  const allowed = await checkRateLimit(`checkout:${clientIp(req)}`, RATE_LIMITS.CHECKOUT.limit, RATE_LIMITS.CHECKOUT.windowMs);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests from this connection. Please try again later.' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const campaignId = body?.campaignId as string | undefined;
   if (!campaignId) {

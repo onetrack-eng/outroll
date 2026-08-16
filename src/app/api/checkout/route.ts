@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { checkoutSchema } from '@/lib/validations';
-import { computeCharge } from '@/lib/constants';
+import { computeCharge, RATE_LIMITS } from '@/lib/constants';
 import { createGuestCustomer, stripe } from '@/lib/stripe';
 import { signCheckoutDraft, DraftPitch } from '@/lib/checkoutToken';
+import { checkRateLimit, clientIp } from '@/lib/rateLimit';
 
 // Step 1 of checkout: validate the cart against live listing data (never trust client-side
 // pricing), open a guest Stripe Customer, and issue a SetupIntent to collect the card.
 // Nothing is written to Postgres yet — see lib/checkoutToken.ts for why.
 export async function POST(req: NextRequest) {
+  const allowed = await checkRateLimit(`checkout:${clientIp(req)}`, RATE_LIMITS.CHECKOUT.limit, RATE_LIMITS.CHECKOUT.windowMs);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests from this connection. Please try again later.' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = checkoutSchema.safeParse(body);
   if (!parsed.success) {

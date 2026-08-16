@@ -285,6 +285,23 @@ model Dispute {
   updatedAt DateTime @updatedAt
 }
 
+// --- Rate limiting -----------------------------------------------------------
+
+// Fixed-window request counter for the public, unauthenticated endpoints (curator application,
+// checkout, dispute filing — see src/lib/rateLimit.ts). One row per (key, windowStart); each
+// request atomically upserts and increments count. No cleanup job exists for old windows yet —
+// fine at current volume, worth pruning (e.g. from the daily deadline-sweep cron) if this table
+// ever grows enough to matter.
+model RateLimitHit {
+  id          String   @id @default(cuid())
+  key         String
+  windowStart DateTime
+  count       Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  @@unique([key, windowStart])
+}
+
 // --- Admin -----------------------------------------------------------------
 
 model AdminUser {

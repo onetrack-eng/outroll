@@ -1,16 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { holdFindMany, holdDeleteMany, campaignDeleteMany } = vi.hoisted(() => ({
+const { holdFindMany, holdDeleteMany, campaignDeleteMany, rateLimitHitUpsert } = vi.hoisted(() => ({
   holdFindMany: vi.fn(),
   holdDeleteMany: vi.fn(),
   campaignDeleteMany: vi.fn(),
+  rateLimitHitUpsert: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
     hold: { findMany: holdFindMany, deleteMany: holdDeleteMany },
     campaign: { deleteMany: campaignDeleteMany },
+    rateLimitHit: { upsert: rateLimitHitUpsert },
   },
 }));
 
@@ -20,7 +22,7 @@ vi.mock('@/lib/stripe', () => ({ cancelPaymentIntent }));
 const { POST } = await import('./route');
 
 function fakeRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  return { json: async () => body, headers: { get: () => null } } as unknown as NextRequest;
 }
 
 beforeEach(() => {
@@ -29,6 +31,8 @@ beforeEach(() => {
   campaignDeleteMany.mockReset();
   cancelPaymentIntent.mockReset();
   cancelPaymentIntent.mockResolvedValue(undefined);
+  rateLimitHitUpsert.mockReset();
+  rateLimitHitUpsert.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/checkout/abort', () => {

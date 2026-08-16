@@ -4,7 +4,8 @@ import { verifyCheckoutDraft } from '@/lib/checkoutToken';
 import { createHoldPaymentIntent, cancelPaymentIntent } from '@/lib/stripe';
 import { generateMagicLinkToken, magicLinkUrl } from '@/lib/magicLink';
 import { addBusinessDays } from '@/lib/businessDays';
-import { CURATOR_ACCEPT_WINDOW_BUSINESS_DAYS } from '@/lib/constants';
+import { CURATOR_ACCEPT_WINDOW_BUSINESS_DAYS, RATE_LIMITS } from '@/lib/constants';
+import { checkRateLimit, clientIp } from '@/lib/rateLimit';
 
 // Step 2 of checkout: card is saved (client already confirmed the SetupIntent), so now we
 // create the real Campaign + one Hold per curator, and one manual-capture PaymentIntent per
@@ -16,6 +17,11 @@ import { CURATOR_ACCEPT_WINDOW_BUSINESS_DAYS } from '@/lib/constants';
 // leave a half-built campaign behind; if creation succeeds but a later client-side confirmation
 // fails, /api/checkout/abort does the equivalent unwind.
 export async function POST(req: NextRequest) {
+  const allowed = await checkRateLimit(`checkout:${clientIp(req)}`, RATE_LIMITS.CHECKOUT.limit, RATE_LIMITS.CHECKOUT.windowMs);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests from this connection. Please try again later.' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const checkoutToken = body?.checkoutToken as string | undefined;
   const paymentMethodId = body?.paymentMethodId as string | undefined;

@@ -899,6 +899,7 @@ platform later is a one-line change in that provider's module.
 | Curator display photo | `src/components/ui/Avatar.tsx`, `Curator.profilePhotoUrl`, `instagram.ts`'s `toDataUrl()` |
 | Top nav (logged-in-curator state) | `src/components/Nav.tsx` (server component, reads the session) + `src/components/NavLinks.tsx` (client component, actual markup) |
 | Legal pages (privacy/terms/data deletion) | `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/app/data-deletion/page.tsx` (all linked from `Footer.tsx`) — the latter two exist specifically to satisfy Meta App Review's required-URL checklist |
+| Rate limiting on public endpoints | `src/lib/rateLimit.ts`, `RATE_LIMITS` in `src/lib/constants.ts`, `RateLimitHit` in `prisma/schema.prisma` |
 
 ## Suggested next session
 
@@ -1088,8 +1089,29 @@ Next priorities after that, in rough priority order:
    retry/resume path — needs a decision on whether a cleanup sweep is worth building.
 10. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
     yet monitored or tested against.
-11. **No rate limiting or bot protection anywhere** — the public application form, checkout, and
-    dispute-filing routes are all wide open. Fine at current volume, not fine at scale.
+11. ~~**No rate limiting or bot protection anywhere.**~~ **Fixed 2026-08-16.** All six
+    public/unauthenticated write endpoints — `/api/curator/apply/start-verification`, the four
+    checkout-flow routes (`/api/checkout`, `/confirm`, `/abort`, `/finalize`), and
+    `/api/artist/dispute` — now check a per-IP fixed-window limit before doing any work. Backed
+    by Postgres (`RateLimitHit` model, see `prisma/schema.prisma`), not a new Redis/Upstash
+    service — this app is low-traffic and already has Postgres as its one source of truth, so
+    standing up separate infrastructure for this wasn't worth it. `src/lib/rateLimit.ts` exports
+    `checkRateLimit(key, limit, windowMs)` (atomic upsert on `(key, windowStart)`, returns
+    `false` once the window's count exceeds the limit) and `clientIp(req)` (reads
+    `x-forwarded-for`, which Vercel always sets, falling back to `x-real-ip` then a constant so a
+    misconfigured proxy fails closed into one shared bucket rather than disabling rate limiting
+    entirely). Limits live in `RATE_LIMITS` in `src/lib/constants.ts`: application (5/15min),
+    checkout — all four routes share one bucket per IP since they're steps of one flow
+    (30/15min), dispute filing (10/hour). A blocked request gets a `429` with a plain-English
+    message before any DB/Stripe/email work happens. Verified two ways: `npm test` (6 new tests
+    in `src/lib/rateLimit.test.ts`, plus updated mocks in the three checkout route test files
+    that needed a `headers.get` stub and a `rateLimitHit.upsert` mock they didn't have before)
+    and a real local run — sent 7 requests at `/api/curator/apply/start-verification` from one
+    IP, got 5 through to validation (400s) then 2 real `429`s, confirmed a second IP was
+    unaffected, and confirmed the counts directly in Postgres (`count: 7` for the limited IP,
+    `count: 1` for the other). **Known simplification, not built**: no cleanup job for old
+    `RateLimitHit` rows — the table grows unboundedly with request volume. Fine at current
+    traffic; worth pruning (e.g. from the existing daily deadline-sweep cron) if it ever matters.
 12. Then continue down the rest of both "Known simplifications" lists in priority order (curator
     username reservation, no token refresh job, no periodic profile-photo refresh, etc.)
 

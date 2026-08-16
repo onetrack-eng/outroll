@@ -1,18 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { campaignCreate, campaignDelete, holdCreate, holdUpdate, holdDeleteMany } = vi.hoisted(() => ({
+const { campaignCreate, campaignDelete, holdCreate, holdUpdate, holdDeleteMany, rateLimitHitUpsert } = vi.hoisted(() => ({
   campaignCreate: vi.fn(),
   campaignDelete: vi.fn(),
   holdCreate: vi.fn(),
   holdUpdate: vi.fn(),
   holdDeleteMany: vi.fn(),
+  rateLimitHitUpsert: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
     campaign: { create: campaignCreate, delete: campaignDelete },
     hold: { create: holdCreate, update: holdUpdate, deleteMany: holdDeleteMany },
+    rateLimitHit: { upsert: rateLimitHitUpsert },
   },
 }));
 
@@ -33,7 +35,7 @@ vi.mock('@/lib/magicLink', () => ({
 const { POST } = await import('./route');
 
 function fakeRequest(body: unknown): NextRequest {
-  return { json: async () => body } as unknown as NextRequest;
+  return { json: async () => body, headers: { get: () => null } } as unknown as NextRequest;
 }
 
 const draft = {
@@ -76,6 +78,8 @@ beforeEach(() => {
 
   campaignCreate.mockResolvedValue({ id: 'campaign-1' });
   cancelPaymentIntent.mockResolvedValue(undefined);
+  rateLimitHitUpsert.mockReset();
+  rateLimitHitUpsert.mockResolvedValue({ count: 1 });
 });
 
 describe('POST /api/checkout/confirm', () => {

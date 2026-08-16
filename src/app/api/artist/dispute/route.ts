@@ -3,11 +3,18 @@ import { prisma } from '@/lib/db';
 import { disputeSchema } from '@/lib/validations';
 import { isPast } from '@/lib/businessDays';
 import { sendCuratorDisputeFiledEmail } from '@/lib/resend';
+import { checkRateLimit, clientIp } from '@/lib/rateLimit';
+import { RATE_LIMITS } from '@/lib/constants';
 
 // Artist files a dispute from their magic-link dashboard (spec section 2 & 3). This freezes
 // only the one Hold in question — every other hold in the campaign (or the curator's other
 // in-flight work) is untouched, since the freeze is just this hold's status flipping to DISPUTED.
 export async function POST(req: NextRequest) {
+  const allowed = await checkRateLimit(`dispute:${clientIp(req)}`, RATE_LIMITS.DISPUTE.limit, RATE_LIMITS.DISPUTE.windowMs);
+  if (!allowed) {
+    return NextResponse.json({ error: 'Too many requests from this connection. Please try again later.' }, { status: 429 });
+  }
+
   const body = await req.json().catch(() => null);
   const token = body?.token as string | undefined;
   const holdId = body?.holdId as string | undefined;

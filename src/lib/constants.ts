@@ -9,6 +9,15 @@ export const CURATOR_POST_WINDOW_BUSINESS_DAYS = 7;
 // Calendar-day dispute/holding window ("one week" per spec section 3, not business days).
 export const PAYOUT_HOLD_WINDOW_DAYS = 7;
 
+// Rate limits for public, unauthenticated endpoints — see src/lib/rateLimit.ts. Keyed per-IP;
+// generous enough for real usage patterns (e.g. a multi-curator checkout retrying a failed
+// PaymentIntent) while still bounding scripted abuse.
+export const RATE_LIMITS = {
+  APPLY: { limit: 5, windowMs: 15 * 60 * 1000 },
+  CHECKOUT: { limit: 30, windowMs: 15 * 60 * 1000 },
+  DISPUTE: { limit: 10, windowMs: 60 * 60 * 1000 },
+} as const;
+
 // Cloud-storage hosts accepted for an artist's asset folder link — any of these over HTTPS,
 // not just Google Drive. Add a host here (and to the helper text in AddToCampaignForm.tsx) to
 // support another provider.
