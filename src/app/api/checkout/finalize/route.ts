@@ -43,6 +43,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Marked before attempting email delivery (which is already best-effort below) so a
+  // successfully-confirmed campaign is never swept up as "stuck" by sweepStuckCampaigns just
+  // because Resend had a bad moment — see Campaign.finalizedAt in schema.prisma.
+  await prisma.campaign.update({ where: { id: campaignId }, data: { finalizedAt: new Date() } });
+
   const dashboardUrl = magicLinkUrl(campaign.magicLinkToken);
   // Payment is already fully authorized at this point — an email provider hiccup (unverified
   // domain, rate limit, etc.) must not turn into a 500 for a customer who was just charged.

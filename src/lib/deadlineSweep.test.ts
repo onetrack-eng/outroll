@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { holdFindMany, holdUpdate } = vi.hoisted(() => ({
+const { holdFindMany, holdUpdate, holdDeleteMany, campaignFindMany, campaignDeleteMany } = vi.hoisted(() => ({
   holdFindMany: vi.fn(),
   holdUpdate: vi.fn(),
+  holdDeleteMany: vi.fn(),
+  campaignFindMany: vi.fn(),
+  campaignDeleteMany: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
@@ -10,6 +13,11 @@ vi.mock('@/lib/db', () => ({
     hold: {
       findMany: holdFindMany,
       update: holdUpdate,
+      deleteMany: holdDeleteMany,
+    },
+    campaign: {
+      findMany: campaignFindMany,
+      deleteMany: campaignDeleteMany,
     },
   },
 }));
@@ -42,15 +50,24 @@ const PAST = new Date(Date.now() - 60 * 60 * 1000);
 const FUTURE = new Date(Date.now() + 60 * 60 * 1000);
 
 function findManyByStatus(fixtures: Record<string, unknown[]>) {
-  holdFindMany.mockImplementation(async ({ where }: { where: { status: string } }) => {
-    return fixtures[where.status] ?? [];
+  holdFindMany.mockImplementation(async ({ where }: { where: { status?: string; campaignId?: string } }) => {
+    if (where.status) return fixtures[where.status] ?? [];
+    // abortCampaign() (used by the stuck-campaign sweep) looks up holds by campaignId, not
+    // status — no fixture wired up for a given campaign just means "no holds to cancel".
+    return [];
   });
 }
 
 beforeEach(() => {
   holdFindMany.mockReset();
+  holdFindMany.mockResolvedValue([]);
   holdUpdate.mockReset();
+  holdDeleteMany.mockReset();
+  campaignFindMany.mockReset();
+  campaignFindMany.mockResolvedValue([]);
+  campaignDeleteMany.mockReset();
   cancelPaymentIntent.mockReset();
+  cancelPaymentIntent.mockResolvedValue(undefined);
   refundPaymentIntent.mockReset();
   transferToCurator.mockReset();
   sendArtistHoldStatusEmail.mockReset();
@@ -288,10 +305,58 @@ describe('runDeadlineSweep', () => {
     const result = await runDeadlineSweep();
 
     expect(result).toEqual({
+      stuckCampaignsCleaned: 0,
       acceptTimeouts: 1,
       postTimeouts: 1,
       payoutsReleased: 1,
       errors: [],
+    });
+  });
+
+  describe('stuck campaign cleanup', () => {
+    it('cancels PaymentIntents and deletes an unfinalized campaign past the grace period', async () => {
+      campaignFindMany.mockResolvedValue([{ id: 'stuck-1' }]);
+      holdFindMany.mockImplementation(async ({ where }: { where: { status?: string; campaignId?: string } }) => {
+        if (where.campaignId === 'stuck-1') {
+          return [{ id: 'hold-stuck', stripePaymentIntentId: 'pi_stuck' }];
+        }
+        return [];
+      });
+
+      const result = await runDeadlineSweep();
+
+      expect(campaignFindMany).toHaveBeenCalledWith({
+        where: { finalizedAt: null, createdAt: { lt: expect.any(Date) } },
+      });
+      expect(cancelPaymentIntent).toHaveBeenCalledWith('pi_stuck');
+      expect(holdDeleteMany).toHaveBeenCalledWith({ where: { campaignId: 'stuck-1' } });
+      expect(campaignDeleteMany).toHaveBeenCalledWith({ where: { id: 'stuck-1' } });
+      expect(result.stuckCampaignsCleaned).toBe(1);
+      expect(result.errors).toEqual([]);
+    });
+
+    it('records an error and continues past one failed cleanup to the next', async () => {
+      campaignFindMany.mockResolvedValue([{ id: 'stuck-fail' }, { id: 'stuck-ok' }]);
+      campaignDeleteMany.mockImplementation(async ({ where }: { where: { id: string } }) => {
+        if (where.id === 'stuck-fail') throw new Error('db down');
+      });
+
+      const result = await runDeadlineSweep();
+
+      expect(result.stuckCampaignsCleaned).toBe(1);
+      expect(result.errors).toEqual(['stuck campaign stuck-fail: db down']);
+      expect(campaignDeleteMany).toHaveBeenCalledWith({ where: { id: 'stuck-ok' } });
+    });
+
+    it('does not touch a campaign still within the grace period (findMany filter is the only guard, exercised via the query args)', async () => {
+      // sweepStuckCampaigns relies entirely on the DB query's createdAt filter (no in-process
+      // re-check, unlike the payout release path) -- confirm the cutoff is computed from `now`.
+      campaignFindMany.mockResolvedValue([]);
+
+      await runDeadlineSweep();
+
+      const call = campaignFindMany.mock.calls[0][0];
+      expect(call.where.createdAt.lt.getTime()).toBeLessThan(Date.now());
     });
   });
 });

@@ -1,15 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { campaignFindUnique, holdFindMany, rateLimitHitUpsert } = vi.hoisted(() => ({
+const { campaignFindUnique, campaignUpdate, holdFindMany, rateLimitHitUpsert } = vi.hoisted(() => ({
   campaignFindUnique: vi.fn(),
+  campaignUpdate: vi.fn(),
   holdFindMany: vi.fn(),
   rateLimitHitUpsert: vi.fn(),
 }));
 
 vi.mock('@/lib/db', () => ({
   prisma: {
-    campaign: { findUnique: campaignFindUnique },
+    campaign: { findUnique: campaignFindUnique, update: campaignUpdate },
     hold: { findMany: holdFindMany },
     rateLimitHit: { upsert: rateLimitHitUpsert },
   },
@@ -38,6 +39,8 @@ function fakeRequest(body: unknown): NextRequest {
 
 beforeEach(() => {
   campaignFindUnique.mockReset();
+  campaignUpdate.mockReset();
+  campaignUpdate.mockResolvedValue({});
   holdFindMany.mockReset();
   paymentIntentsRetrieve.mockReset();
   sendMagicLinkEmail.mockReset();
@@ -79,6 +82,10 @@ describe('POST /api/checkout/finalize', () => {
 
     expect(res.status).toBe(200);
     expect(body.magicLinkUrl).toBe('http://localhost:3000/dashboard/tok');
+    expect(campaignUpdate).toHaveBeenCalledWith({
+      where: { id: 'campaign-1' },
+      data: { finalizedAt: expect.any(Date) },
+    });
     expect(sendMagicLinkEmail).toHaveBeenCalledWith('artist@example.com', expect.any(String), 2);
     expect(sendCuratorNewSubmissionEmail).toHaveBeenCalledTimes(2);
     expect(sendCuratorNewSubmissionEmail).toHaveBeenCalledWith(
@@ -121,6 +128,7 @@ describe('POST /api/checkout/finalize', () => {
     const res = await POST(fakeRequest({ campaignId: 'campaign-1' }));
 
     expect(res.status).toBe(409);
+    expect(campaignUpdate).not.toHaveBeenCalled();
     expect(sendMagicLinkEmail).not.toHaveBeenCalled();
     expect(sendCuratorNewSubmissionEmail).not.toHaveBeenCalled();
   });

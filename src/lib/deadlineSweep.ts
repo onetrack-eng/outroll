@@ -1,9 +1,41 @@
 import { prisma } from '@/lib/db';
 import { cancelPaymentIntent, refundPaymentIntent, transferToCurator } from '@/lib/stripe';
+import { abortCampaign } from '@/lib/checkoutCleanup';
 import { isPast } from '@/lib/businessDays';
 import { magicLinkUrl } from '@/lib/magicLink';
 import { sendArtistHoldStatusEmail, sendCuratorPayoutEmail } from '@/lib/resend';
-import { formatCents } from '@/lib/constants';
+import { formatCents, STUCK_CAMPAIGN_GRACE_PERIOD_MS } from '@/lib/constants';
+
+// A Campaign whose checkout flow never completed — the browser tab closed or crashed somewhere
+// between /api/checkout/confirm (Campaign + Holds + PaymentIntents created) and
+// /api/checkout/finalize (which sets finalizedAt once every PaymentIntent is confirmed). Left
+// alone, these would eventually get caught by the accept-window sweep below once
+// acceptDeadline passes — but that's up to 7 business days later, and it fires a "your hold was
+// refunded" email at an artist who never even got the original "campaign submitted" email in
+// the first place. Cleaning these up directly (same unwind as /api/checkout/abort) once it's
+// clearly been abandoned, not just running long, avoids both problems.
+async function sweepStuckCampaigns(now: Date) {
+  let cleaned = 0;
+  const errors: string[] = [];
+
+  const stuck = await prisma.campaign.findMany({
+    where: {
+      finalizedAt: null,
+      createdAt: { lt: new Date(now.getTime() - STUCK_CAMPAIGN_GRACE_PERIOD_MS) },
+    },
+  });
+
+  for (const campaign of stuck) {
+    try {
+      await abortCampaign(campaign.id);
+      cleaned += 1;
+    } catch (err) {
+      errors.push(`stuck campaign ${campaign.id}: ${(err as Error).message}`);
+    }
+  }
+
+  return { cleaned, errors };
+}
 
 // The three time-based state transitions in spec section 3, none of which depend on either
 // party taking action:
@@ -17,6 +49,10 @@ export async function runDeadlineSweep() {
   let postTimeouts = 0;
   let payoutsReleased = 0;
   const errors: string[] = [];
+
+  const stuckCampaignSweep = await sweepStuckCampaigns(now);
+  const stuckCampaignsCleaned = stuckCampaignSweep.cleaned;
+  errors.push(...stuckCampaignSweep.errors);
 
   // 1. Accept-window timeouts.
   const overdueForAccept = await prisma.hold.findMany({
@@ -98,5 +134,5 @@ export async function runDeadlineSweep() {
     }
   }
 
-  return { acceptTimeouts, postTimeouts, payoutsReleased, errors };
+  return { stuckCampaignsCleaned, acceptTimeouts, postTimeouts, payoutsReleased, errors };
 }

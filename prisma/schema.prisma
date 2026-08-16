@@ -209,6 +209,14 @@ model Campaign {
 
   holds Hold[]
 
+  // Set by /api/checkout/finalize once every hold's PaymentIntent is confirmed and the artist's
+  // magic-link email is (attempted to be) sent — the signal that this campaign actually reached
+  // a real, discoverable state, not just Holds + PaymentIntents sitting in the DB. Null means the
+  // checkout flow never completed (e.g. the browser tab closed mid-confirmation) — see
+  // sweepStuckCampaigns in src/lib/deadlineSweep.ts, which cleans these up the same way
+  // /api/checkout/abort does, just on a timer instead of a client call.
+  finalizedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

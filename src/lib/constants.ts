@@ -18,6 +18,12 @@ export const RATE_LIMITS = {
   DISPUTE: { limit: 10, windowMs: 60 * 60 * 1000 },
 } as const;
 
+// A real client-side checkout confirmation loop — even a large multi-curator campaign with a
+// 3D Secure challenge on every hold — finishes in well under a minute. If a Campaign is still
+// unfinalized (see Campaign.finalizedAt) this long after creation, the browser tab was closed
+// or crashed mid-loop, not just running slowly — see sweepStuckCampaigns in deadlineSweep.ts.
+export const STUCK_CAMPAIGN_GRACE_PERIOD_MS = 60 * 60 * 1000; // 1 hour
+
 // Cloud-storage hosts accepted for an artist's asset folder link — any of these over HTTPS,
 // not just Google Drive. Add a host here (and to the helper text in AddToCampaignForm.tsx) to
 // support another provider.

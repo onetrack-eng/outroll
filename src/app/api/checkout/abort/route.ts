@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
-import { cancelPaymentIntent } from '@/lib/stripe';
+import { abortCampaign } from '@/lib/checkoutCleanup';
 import { RATE_LIMITS } from '@/lib/constants';
 import { checkRateLimit, clientIp } from '@/lib/rateLimit';
 
@@ -22,14 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing campaignId' }, { status: 400 });
   }
 
-  const holds = await prisma.hold.findMany({ where: { campaignId } });
-  for (const hold of holds) {
-    if (hold.stripePaymentIntentId) {
-      await cancelPaymentIntent(hold.stripePaymentIntentId).catch(() => {});
-    }
-  }
-  await prisma.hold.deleteMany({ where: { campaignId } });
-  await prisma.campaign.deleteMany({ where: { id: campaignId } });
+  await abortCampaign(campaignId);
 
   return NextResponse.json({ ok: true });
 }

@@ -842,11 +842,14 @@ platform later is a one-line change in that provider's module.
    client-side (see item 1), this got slightly worse in one respect: the browser tab could be
    closed mid-loop after some holds are confirmed but before `/api/checkout/finalize` runs,
    leaving a campaign whose Holds have real authorized PaymentIntents but that never got emailed
-   out or otherwise surfaced to the artist or curators — there's no retry/resume path for that
-   today. `/api/checkout/abort` and `/api/checkout/finalize` both handle the failure and success
-   cases that complete in-browser, but this stuck-mid-loop case isn't handled. Also still true:
-   no idempotency keys on `createHoldPaymentIntent`, so a network retry could theoretically
-   double-create a PaymentIntent for the same hold.
+   out or otherwise surfaced to the artist or curators. ~~There's no retry/resume path for that
+   today.~~ **Fixed 2026-08-16 — see `sweepStuckCampaigns` under "Suggested next session" below**:
+   rather than a retry/resume path (the artist has no way to get back to a closed-tab checkout
+   anyway, so "resume" isn't really achievable), these now get cleaned up automatically —
+   cancelled and deleted — within about an hour instead of sitting until the 7-business-day
+   accept-deadline sweep eventually caught them with a confusing out-of-nowhere "refunded" email.
+   Also still true: no idempotency keys on `createHoldPaymentIntent`, so a network retry could
+   theoretically double-create a PaymentIntent for the same hold.
 3. **Card authorization windows and business-day deadlines can drift.** Card networks generally
    expire uncaptured manual-capture authorizations around 7 days; the accept window is 7
    *business* days (up to 9 calendar days across a weekend). A hold could theoretically expire
@@ -900,6 +903,7 @@ platform later is a one-line change in that provider's module.
 | Top nav (logged-in-curator state) | `src/components/Nav.tsx` (server component, reads the session) + `src/components/NavLinks.tsx` (client component, actual markup) |
 | Legal pages (privacy/terms/data deletion) | `src/app/privacy/page.tsx`, `src/app/terms/page.tsx`, `src/app/data-deletion/page.tsx` (all linked from `Footer.tsx`) — the latter two exist specifically to satisfy Meta App Review's required-URL checklist |
 | Rate limiting on public endpoints | `src/lib/rateLimit.ts`, `RATE_LIMITS` in `src/lib/constants.ts`, `RateLimitHit` in `prisma/schema.prisma` |
+| Stuck/abandoned checkout cleanup | `src/lib/checkoutCleanup.ts` (`abortCampaign`, shared with `/api/checkout/abort`), `sweepStuckCampaigns` in `src/lib/deadlineSweep.ts`, `Campaign.finalizedAt` in `prisma/schema.prisma` |
 
 ## Suggested next session
 
@@ -1096,9 +1100,37 @@ Next priorities after that, in rough priority order:
      real rows in the same database `outroll.me` serves from. Worth keeping in mind before
      assuming local experimentation is isolated — it isn't. Not something to fix as part of this
      session's work; flagging so it doesn't get rediscovered the hard way.
-9. From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
+9. ~~From the checkout "Known simplifications" list: a browser tab closed mid-confirmation-loop
    (some holds authorized, `/api/checkout/finalize` never called) leaves a stuck campaign with no
-   retry/resume path — needs a decision on whether a cleanup sweep is worth building.
+   retry/resume path — needs a decision on whether a cleanup sweep is worth building.~~ **Fixed
+   2026-08-16.** Added `Campaign.finalizedAt` (`DateTime?`, set by `/api/checkout/finalize` right
+   after every hold's PaymentIntent is confirmed `requires_capture` — deliberately set *before*
+   attempting the artist/curator emails below it, which are already best-effort, so a Resend
+   hiccup can never make a genuinely-completed campaign look stuck). `sweepStuckCampaigns` in
+   `src/lib/deadlineSweep.ts` (new, runs as the first step of the existing daily
+   `runDeadlineSweep`) finds any `Campaign` where `finalizedAt IS NULL` and
+   `createdAt` is older than `STUCK_CAMPAIGN_GRACE_PERIOD_MS` (1 hour — a real confirmation loop,
+   even a large multi-curator one with 3D Secure on every hold, finishes in well under a minute,
+   so an hour is generous, not tight) and cleans each one up — cancels every Hold's
+   PaymentIntent, deletes the Holds and the Campaign. This is the exact same unwind
+   `/api/checkout/abort` already did for a client-detected failure, now extracted into a shared
+   `abortCampaign()` in the new `src/lib/checkoutCleanup.ts` so both call sites (client abort,
+   time-based sweep) share one implementation. Deliberately *deletes* rather than marks
+   `REFUNDED` — a stuck campaign never got the artist's "campaign submitted" email in the first
+   place, so a later "your hold was refunded" email referencing a magic link they never knew
+   existed would be confusing, not helpful; the old 7-business-day accept-deadline sweep would
+   eventually have caught the same Holds with exactly that confusing email, so this also fixes a
+   real (if slow) latent bug, not just adds a new safety net. Given the daily-only cron cadence
+   (see the deadline-sweep item elsewhere in this file), worst case a stuck campaign now sits for
+   up to ~1 day instead of up to 7 business days — a large improvement, not instant, but bounded
+   by the same infra constraint every other deadline transition already has.
+   **Verified three ways**: new unit tests in `src/lib/deadlineSweep.test.ts` (cleanup happens,
+   PaymentIntent cancellation, one failure doesn't block the next campaign, a campaign inside the
+   grace period is left untouched) and updated `finalize`/`abort` route tests; a real local run
+   against the actual database — created a genuine stuck Campaign+Hold 2 hours in the past, ran
+   `runDeadlineSweep()`, confirmed both rows were gone afterward
+   (`stuckCampaignsCleaned: 1`); and a second real run confirming a freshly-created campaign
+   (well within the grace period) is correctly left alone by the same sweep.
 10. Card-authorization-window vs. business-day-deadline drift — still just a theoretical risk, not
     yet monitored or tested against.
 11. ~~**No rate limiting or bot protection anywhere.**~~ **Fixed 2026-08-16.** All six
